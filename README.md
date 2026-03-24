@@ -47,3 +47,7 @@ See **How It Works** in the simulation nav for the full model equations and inte
 index.html   — the entire simulation (self-contained)
 README.md    — this file
 ```
+
+## Disclosure
+
+This code written with assistance from Claude Sonnet 4.6.
