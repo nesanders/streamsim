@@ -39,6 +39,7 @@
                 <span class="text-white cursor-pointer">Dashboard</span>
                 <span class="hover:text-white cursor-pointer" onclick="showModal('insights')">How It Works</span>
                 <span class="hover:text-white cursor-pointer" onclick="showModal('scenarios')">Scenarios</span>
+                <span id="showBannerLink" class="hover:text-white cursor-pointer hidden" onclick="toggleBanner()">About</span>
             </div>
         </div>
         <div class="flex items-center space-x-6 text-sm">
@@ -53,6 +54,18 @@
             </button>
         </div>
     </nav>
+
+    <!-- Intro Banner -->
+    <div id="introBanner" class="bg-[#0d1a0d] border-b border-green-900 px-6 py-3 text-sm">
+        <div class="max-w-5xl flex items-start gap-4">
+            <div class="flex-1 text-gray-300 leading-relaxed">
+                <span class="font-bold text-white">StreamSim</span> is a market simulation: 1,000 virtual viewers each independently decide every month whether to subscribe to or cancel streaming services, based on price, content quality, genre preferences, and the economy.
+                Your job is to adjust the controls on the left and run the simulation — then observe how individual decisions add up to market outcomes.
+                Use <span class="text-white font-medium">Scenarios</span> for guided activities, or <span class="text-white font-medium">How It Works</span> to see the math behind the model.
+            </div>
+            <button onclick="toggleBanner()" class="text-green-600 hover:text-white text-xs whitespace-nowrap pt-0.5 transition">Hide ✕</button>
+        </div>
+    </div>
 
     <main class="flex-1 p-6 grid grid-cols-12 gap-6 overflow-hidden">
         <!-- Sidebar -->
@@ -286,7 +299,7 @@ class Agent {
     }
 
     evaluate(services, wageGrowth, marketCPI) {
-        const spendingPressure = 1 + (-wageGrowth * 0.05) + (marketCPI * 0.02);
+        const spendingPressure = 1 + (-wageGrowth * 0.10) + (marketCPI * 0.04);
 
         // Churn phase
         this.subscriptions = this.subscriptions.filter(sid => {
@@ -296,7 +309,8 @@ class Agent {
             // Retention is primarily driven by content quality
             let churnProb;
             if (s.quality >= 7) {
-                churnProb = 0.01;
+                // Sticky, but not recession-proof: pressure adds up to ~5% extra churn at worst
+                churnProb = 0.01 + Math.max(0, spendingPressure - 1) * 0.06;
             } else if (s.quality >= 4) {
                 const fit = s.genreFocus === this.preference ? 1.3 : 1.0;
                 const u = (s.quality * 0.6 + s.contentVolume * 0.4) * fit - (s.price * this.priceSensitivity * spendingPressure);
@@ -347,7 +361,7 @@ class Agent {
             const s = services.find(sv => sv.id === sid);
             if (!s) return null;
             let churnProb;
-            if (s.quality >= 7) { churnProb = 0.01; }
+            if (s.quality >= 7) { churnProb = 0.01 + Math.max(0, spendingPressure - 1) * 0.06; }
             else if (s.quality >= 4) {
                 const fit = s.genreFocus === this.preference ? 1.3 : 1.0;
                 const u = (s.quality * 0.6 + s.contentVolume * 0.4) * fit - (s.price * this.priceSensitivity * spendingPressure);
@@ -378,7 +392,7 @@ function weightedGenre() {
 function getSpendingPressure() {
     const w = parseFloat(document.getElementById('walletPressure').value);
     const c = parseFloat(document.getElementById('cpi').value);
-    return 1 + (-w * 0.05) + (c * 0.02);
+    return 1 + (-w * 0.10) + (c * 0.04);
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
@@ -763,8 +777,8 @@ function syncSliderLabels() {
 function updateMacroDisplay() {
     const w = parseFloat(document.getElementById('walletPressure').value);
     const c = parseFloat(document.getElementById('cpi').value);
-    const wTerm = -w * 0.05;
-    const cTerm = c * 0.02;
+    const wTerm = -w * 0.10;
+    const cTerm = c * 0.04;
     const M = 1 + wTerm + cTerm;
     document.getElementById('walletTerm').innerText = (wTerm >= 0 ? '+' : '') + wTerm.toFixed(3);
     document.getElementById('cpiTerm').innerText = '+' + cTerm.toFixed(3);
@@ -927,12 +941,13 @@ window.showModal = type => {
                     <h3 class="text-base font-bold mb-1">2. Economy Factor <span class="assumption-badge">MODEL ASSUMPTION</span></h3>
                     <p class="text-sm text-gray-400 mb-2">Two sliders independently shift how price-sensitive viewers become. They are added together to get a single multiplier.</p>
                     <div class="font-mono bg-[#111] p-3 rounded text-sm text-center mb-3" style="color:#FFCC00">
-                        EconomyFactor = 1 + (−IncomeGrowth × 0.05) + (Inflation × 0.02)
+                        EconomyFactor = 1 + (−IncomeGrowth × 0.10) + (Inflation × 0.04)
                     </div>
                     <div class="text-[11px] text-gray-400 space-y-1 mb-3">
-                        <div>• Income growth of −5% adds <b>+0.25</b> to the factor (people feel poorer → price matters more)</div>
-                        <div>• Inflation of 5% adds <b>+0.10</b> to the factor (prices feel higher → same effect)</div>
-                        <div>• They stack: recession + high inflation creates maximum pressure</div>
+                        <div>• Income growth of −5% adds <b>+0.50</b> to the factor (people feel poorer → price matters more)</div>
+                        <div>• Inflation of 5% adds <b>+0.20</b> to the factor (prices feel higher → same effect)</div>
+                        <div>• They stack: recession (−5%) + high inflation (10%) → Factor = <b>1.90</b></div>
+                        <div>• Strong growth (+5%, low inflation) → Factor = <b>0.50</b> (everyone spends more freely)</div>
                     </div>
                     <div style="height:140px;"><canvas id="insightMacroChart"></canvas></div>
                 </section>
@@ -954,13 +969,14 @@ window.showModal = type => {
                     <h3 class="text-base font-bold mb-1">4. Will a viewer cancel? <span class="assumption-badge">MODEL ASSUMPTION</span></h3>
                     <p class="text-sm text-gray-400 mb-2">Cancellation (churn) is mostly driven by content quality, not price. This reflects the idea that people put up with a lot for a show they love — but bail quickly if there's nothing worth watching.</p>
                     <div class="font-mono bg-[#111] p-3 rounded text-sm text-center mb-3" style="color:#E50914">
-                        P(cancel) = f(Quality)  — price matters less than quality for retention
+                        P(cancel) = f(Quality, EconomyFactor)
                     </div>
                     <div class="text-[11px] text-gray-400 space-y-1 mb-3">
-                        <div>Quality ≥ 7 → <span class="text-green-400">1%</span> monthly cancel rate (very sticky)</div>
-                        <div>Quality 4–7 → depends on value score (1–15%)</div>
-                        <div>Quality &lt; 4 → <span class="text-red-400">35%</span> monthly cancel rate regardless of price</div>
+                        <div>Quality ≥ 7 → base <span class="text-green-400">1%</span> + up to <span class="text-yellow-400">~5%</span> extra in a bad economy <span class="text-gray-600">(still sticky, but not recession-proof)</span></div>
+                        <div>Quality 4–7 → depends on value score (2–15%)</div>
+                        <div>Quality &lt; 4 → <span class="text-red-400">35%</span> monthly cancel rate regardless of price or economy</div>
                     </div>
+                    <p class="text-[11px] text-gray-500 mb-2">Even a beloved service can lose subscribers in a severe recession — just more slowly than a mediocre one.</p>
                     <div style="height:140px;"><canvas id="insightChurnChart"></canvas></div>
                 </section>
             </div>`;
@@ -1105,7 +1121,7 @@ function renderInsightCharts() {
     const wages = Array.from({ length: 21 }, (_, i) => -5 + i * 0.5);
     const ctxM = document.getElementById('insightMacroChart');
     if (ctxM) insightCharts.m = new Chart(ctxM, { type: 'line', data: { labels: wages.map(w => w.toFixed(1) + '%'), datasets: [
-        { label: 'Economy Factor (Inflation=2%)', data: wages.map(w => 1 + (-w * 0.05) + 0.04), borderColor: '#FFCC00', backgroundColor: 'transparent', tension: 0.1, pointRadius: 0 }
+        { label: 'Economy Factor (Inflation=2%)', data: wages.map(w => 1 + (-w * 0.10) + 0.08), borderColor: '#FFCC00', backgroundColor: 'transparent', tension: 0.1, pointRadius: 0 }
     ]}, options: chartOpts('Income Growth', 'Economy Factor') });
 
     const utils = Array.from({ length: 40 }, (_, i) => -2 + i * 0.3);
@@ -1118,7 +1134,8 @@ function renderInsightCharts() {
     const qualArr = Array.from({ length: 21 }, (_, i) => i * 0.5);
     const ctxC = document.getElementById('insightChurnChart');
     if (ctxC) insightCharts.c = new Chart(ctxC, { type: 'line', data: { labels: qualArr.map(q => q.toFixed(1)), datasets: [
-        { label: 'Cancel probability per month', data: qualArr.map(q => q >= 7 ? 0.01 : q >= 4 ? 0.05 : 0.35), borderColor: '#E50914', backgroundColor: '#E5091422', fill: true, tension: 0.1, pointRadius: 0, stepped: true }
+        { label: 'Stable economy (M=1.0)', data: qualArr.map(q => q >= 7 ? 0.01 : q >= 4 ? 0.05 : 0.35), borderColor: '#22C55E', backgroundColor: 'transparent', tension: 0.1, pointRadius: 0, stepped: true },
+        { label: 'Recession (M=1.5)', data: qualArr.map(q => q >= 7 ? 0.01 + 0.5 * 0.06 : q >= 4 ? 0.15 : 0.35), borderColor: '#E50914', backgroundColor: '#E5091422', fill: false, tension: 0.1, pointRadius: 0, stepped: true }
     ]}, options: chartOpts('Content Quality (0–10)', 'Cancel Rate / Month') });
 }
 
@@ -1170,6 +1187,14 @@ document.getElementById('downloadBtn').onclick = () => {
     a.click();
     document.body.removeChild(a);
 };
+
+// ── Banner ─────────────────────────────────────────────────────────────────
+function toggleBanner() {
+    const banner = document.getElementById('introBanner');
+    const link = document.getElementById('showBannerLink');
+    const hidden = banner.classList.toggle('hidden');
+    link.classList.toggle('hidden', !hidden);
+}
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 initSim();
