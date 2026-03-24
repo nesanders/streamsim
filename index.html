@@ -927,14 +927,33 @@ window.showModal = type => {
                     <div class="font-mono bg-[#111] p-3 rounded text-sm text-center mb-3" style="color:#E50914">
                         Score = (Quality × 0.6 + Volume × 0.4) × GenreFit − (Price × Sensitivity × EconomyFactor)
                     </div>
-                    <div class="grid grid-cols-2 gap-2 text-[11px] text-gray-400 mb-3">
+                    <div class="grid grid-cols-2 gap-2 text-[11px] text-gray-400 mb-4">
                         <div><b class="text-white">Quality</b> — how good the content is (0–10). Has more weight than volume.</div>
                         <div><b class="text-white">Volume</b> — how much content is available (0–10). Broader appeal.</div>
                         <div><b class="text-white">GenreFit</b> — 1.3 if the service's genre matches the viewer's preference, otherwise 1.0</div>
                         <div><b class="text-white">Sensitivity</b> — how much this person cares about price (high-income = low sensitivity)</div>
                     </div>
-                    <div style="height:150px;"><canvas id="insightUtilityChart"></canvas></div>
-                    <p class="text-[10px] text-gray-600 mt-2 italic">The chart shows how the score drops as price increases, for a high-quality vs. low-quality service.</p>
+                    <p class="text-[11px] text-gray-500 mb-2">Adjust the sliders to see how each parameter shifts the score curve:</p>
+                    <div class="grid grid-cols-2 gap-x-6 gap-y-2 mb-3">
+                        <div>
+                            <div class="flex justify-between text-[10px] mb-1"><label class="text-gray-400">Quality</label><span id="uQ_val" class="text-white">9</span></div>
+                            <input id="uQ" type="range" min="0" max="10" step="0.5" value="9" class="w-full accent-red-600" oninput="updateUtilityChart()">
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-[10px] mb-1"><label class="text-gray-400">Volume</label><span id="uV_val" class="text-white">7</span></div>
+                            <input id="uV" type="range" min="0" max="10" step="0.5" value="7" class="w-full accent-red-600" oninput="updateUtilityChart()">
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-[10px] mb-1"><label class="text-gray-400">Viewer Price Sensitivity</label><span id="uS_val" class="text-white">0.50</span></div>
+                            <input id="uS" type="range" min="0.1" max="1.2" step="0.05" value="0.5" class="w-full accent-red-600" oninput="updateUtilityChart()">
+                        </div>
+                        <div class="flex items-center gap-3 pt-3">
+                            <label class="text-[10px] text-gray-400">Genre match?</label>
+                            <button id="uGenreBtn" onclick="toggleUtilityGenre()" class="text-[10px] px-3 py-1 rounded border border-green-700 bg-green-900/40 text-green-400 font-bold">Yes (×1.3)</button>
+                        </div>
+                    </div>
+                    <div style="height:160px;"><canvas id="insightUtilityChart"></canvas></div>
+                    <p id="uScoreNote" class="text-[10px] text-gray-500 mt-2"></p>
                 </section>
 
                 <section class="bg-black/50 p-4 rounded border border-gray-800">
@@ -943,13 +962,25 @@ window.showModal = type => {
                     <div class="font-mono bg-[#111] p-3 rounded text-sm text-center mb-3" style="color:#FFCC00">
                         EconomyFactor = 1 + (−IncomeGrowth × 0.10) + (Inflation × 0.04)
                     </div>
-                    <div class="text-[11px] text-gray-400 space-y-1 mb-3">
+                    <div class="text-[11px] text-gray-400 space-y-1 mb-4">
                         <div>• Income growth of −5% adds <b>+0.50</b> to the factor (people feel poorer → price matters more)</div>
                         <div>• Inflation of 5% adds <b>+0.20</b> to the factor (prices feel higher → same effect)</div>
                         <div>• They stack: recession (−5%) + high inflation (10%) → Factor = <b>1.90</b></div>
                         <div>• Strong growth (+5%, low inflation) → Factor = <b>0.50</b> (everyone spends more freely)</div>
                     </div>
-                    <div style="height:140px;"><canvas id="insightMacroChart"></canvas></div>
+                    <p class="text-[11px] text-gray-500 mb-2">Drag to see how each slider moves the curve — and where your current simulation settings sit:</p>
+                    <div class="grid grid-cols-2 gap-x-6 gap-y-2 mb-3">
+                        <div>
+                            <div class="flex justify-between text-[10px] mb-1"><label class="text-gray-400">Income Growth</label><span id="mW_val" class="text-white">0%</span></div>
+                            <input id="mW" type="range" min="-5" max="5" step="0.5" value="0" class="w-full accent-red-600" oninput="updateMacroInsightChart()">
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-[10px] mb-1"><label class="text-gray-400">Inflation</label><span id="mC_val" class="text-white">2%</span></div>
+                            <input id="mC" type="range" min="0" max="10" step="0.5" value="2" class="w-full accent-red-600" oninput="updateMacroInsightChart()">
+                        </div>
+                    </div>
+                    <div style="height:150px;"><canvas id="insightMacroChart"></canvas></div>
+                    <p id="mFactorNote" class="text-[10px] text-gray-500 mt-2"></p>
                 </section>
 
                 <section class="bg-black/50 p-4 rounded border border-gray-800">
@@ -1104,25 +1135,97 @@ function getScenarios() {
     ];
 }
 
+// ── Utility chart interactivity ────────────────────────────────────────────
+let utilityGenreMatch = true;
+
+window.updateUtilityChart = function() {
+    if (!insightCharts.u) return;
+    const Q = parseFloat(document.getElementById('uQ').value);
+    const V = parseFloat(document.getElementById('uV').value);
+    const S = parseFloat(document.getElementById('uS').value);
+    const fit = utilityGenreMatch ? 1.3 : 1.0;
+    document.getElementById('uQ_val').innerText = Q.toFixed(1);
+    document.getElementById('uV_val').innerText = V.toFixed(1);
+    document.getElementById('uS_val').innerText = S.toFixed(2);
+    const prices = Array.from({ length: 26 }, (_, i) => i + 5);
+    const scores = prices.map(p => (Q * 0.6 + V * 0.4) * fit - p * S * 1.0);
+    insightCharts.u.data.datasets[0].data = scores;
+    insightCharts.u.data.datasets[0].label = `Score (Q=${Q.toFixed(1)}, V=${V.toFixed(1)}, fit=${fit}, S=${S.toFixed(2)})`;
+    insightCharts.u.update('none');
+    // Annotate the subscribe/no-subscribe crossover prices
+    const thresh3 = prices.find((p, i) => scores[i] < 3);
+    const thresh5 = prices.find((p, i) => scores[i] < 5);
+    const note = document.getElementById('uScoreNote');
+    if (note) {
+        const parts = [];
+        if (thresh5) parts.push(`Score drops below 5 (40%→10% subscribe chance) around <b>$${thresh5}</b>`);
+        if (thresh3) parts.push(`drops below 3 (10%→2%) around <b>$${thresh3}</b>`);
+        note.innerHTML = parts.length ? parts.join(', ') + '.' : 'Score stays above 5 across the full price range.';
+    }
+};
+
+window.updateMacroInsightChart = function() {
+    if (!insightCharts.m) return;
+    const wages = Array.from({ length: 21 }, (_, i) => -5 + i * 0.5);
+    const W = parseFloat(document.getElementById('mW').value);
+    const C = parseFloat(document.getElementById('mC').value);
+    document.getElementById('mW_val').innerText = (W > 0 ? '+' : '') + W.toFixed(1) + '%';
+    document.getElementById('mC_val').innerText = C.toFixed(1) + '%';
+    // Full curve: vary income growth, hold inflation fixed at slider value
+    insightCharts.m.data.datasets[0].data = wages.map(w => 1 + (-w * 0.10) + (C * 0.04));
+    insightCharts.m.data.datasets[0].label = `Economy Factor (Inflation=${C.toFixed(1)}%)`;
+    // Orange dot at current slider position
+    const currentM = 1 + (-W * 0.10) + (C * 0.04);
+    const dotData = wages.map(w => w === W ? currentM : null);
+    insightCharts.m.data.datasets[2].data = dotData;
+    insightCharts.m.update('none');
+    const note = document.getElementById('mFactorNote');
+    if (note) {
+        const direction = currentM > 1 ? 'above 1 — viewers are more price-sensitive than baseline' : currentM < 1 ? 'below 1 — viewers are less price-sensitive than baseline' : 'exactly 1 — no macro effect';
+        note.innerHTML = `Current settings → Economy Factor = <b class="text-yellow-400">${currentM.toFixed(2)}</b>, ${direction}.`;
+    }
+};
+
+window.toggleUtilityGenre = function() {
+    utilityGenreMatch = !utilityGenreMatch;
+    const btn = document.getElementById('uGenreBtn');
+    if (utilityGenreMatch) {
+        btn.className = 'text-[10px] px-3 py-1 rounded border border-green-700 bg-green-900/40 text-green-400 font-bold';
+        btn.innerText = 'Yes (×1.3)';
+    } else {
+        btn.className = 'text-[10px] px-3 py-1 rounded border border-gray-700 bg-gray-900/40 text-gray-400 font-bold';
+        btn.innerText = 'No (×1.0)';
+    }
+    updateUtilityChart();
+};
+
 // ── Insight charts ─────────────────────────────────────────────────────────
 function renderInsightCharts() {
     Object.values(insightCharts).forEach(c => c.destroy());
     insightCharts = {};
 
     const prices = Array.from({ length: 26 }, (_, i) => i + 5);
-    const uHigh = prices.map(p => (9 * 0.6 + 7 * 0.4) * 1.3 - p * 0.5 * 1.0);
-    const uLow  = prices.map(p => (3 * 0.6 + 3 * 0.4) * 1.0 - p * 0.5 * 1.0);
     const ctxU = document.getElementById('insightUtilityChart');
-    if (ctxU) insightCharts.u = new Chart(ctxU, { type: 'line', data: { labels: prices, datasets: [
-        { label: 'High quality (9) + genre match', data: uHigh, borderColor: '#22C55E', backgroundColor: 'transparent', tension: 0.3, pointRadius: 0 },
-        { label: 'Low quality (3), no genre match', data: uLow,  borderColor: '#E50914', backgroundColor: 'transparent', tension: 0.3, pointRadius: 0 }
-    ]}, options: chartOpts('Price ($)', 'Value Score') });
+    if (ctxU) {
+        insightCharts.u = new Chart(ctxU, { type: 'line', data: { labels: prices, datasets: [
+            { label: 'Score', data: [], borderColor: '#22C55E', backgroundColor: '#22C55E18', fill: true, tension: 0.3, pointRadius: 0 },
+            { label: 'Subscribe threshold (score = 3)', data: prices.map(() => 3), borderColor: '#FFCC0066', backgroundColor: 'transparent', borderDash: [4,3], pointRadius: 0 },
+            { label: 'Strong subscribe threshold (score = 5)', data: prices.map(() => 5), borderColor: '#FFCC0033', backgroundColor: 'transparent', borderDash: [2,4], pointRadius: 0 }
+        ]}, options: (() => { const o = chartOpts('Price ($)', 'Value Score'); o.scales.y.min = -10; o.scales.y.max = 15; return o; })() });
+        updateUtilityChart();
+    }
 
     const wages = Array.from({ length: 21 }, (_, i) => -5 + i * 0.5);
     const ctxM = document.getElementById('insightMacroChart');
-    if (ctxM) insightCharts.m = new Chart(ctxM, { type: 'line', data: { labels: wages.map(w => w.toFixed(1) + '%'), datasets: [
-        { label: 'Economy Factor (Inflation=2%)', data: wages.map(w => 1 + (-w * 0.10) + 0.08), borderColor: '#FFCC00', backgroundColor: 'transparent', tension: 0.1, pointRadius: 0 }
-    ]}, options: chartOpts('Income Growth', 'Economy Factor') });
+    if (ctxM) {
+        const mOpts = (() => { const o = chartOpts('Income Growth (%)', 'Economy Factor'); o.scales.y.min = 0.3; o.scales.y.max = 2.1; return o; })();
+        insightCharts.m = new Chart(ctxM, { type: 'line', data: { labels: wages.map(w => w.toFixed(1) + '%'), datasets: [
+            { label: 'Economy Factor', data: [], borderColor: '#FFCC00', backgroundColor: '#FFCC0018', fill: true, tension: 0.1, pointRadius: 0 },
+            { label: 'Neutral (M=1.0)', data: wages.map(() => 1.0), borderColor: '#ffffff22', backgroundColor: 'transparent', borderDash: [4,3], pointRadius: 0 },
+            { label: 'Current sim setting', data: [], borderColor: '#ff6600', backgroundColor: 'transparent', borderDash: [0], pointRadius: 6, pointStyle: 'circle', showLine: false }
+        ]}, options: mOpts });
+        updateMacroInsightChart();
+    }
 
     const utils = Array.from({ length: 40 }, (_, i) => -2 + i * 0.3);
     const ctxS = document.getElementById('insightSubChart');
