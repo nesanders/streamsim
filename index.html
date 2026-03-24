@@ -1,1195 +1,1178 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StreamSim - Streaming Market ABM</title>
+    <title>StreamSim — Streaming Market Simulation</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #000;
-            color: #fff;
-        }
-
+        body { font-family: 'Inter', sans-serif; background-color: #000; color: #fff; }
         .netflix-red { color: #E50914; }
         .bg-netflix-red { background-color: #E50914; }
         .bg-netflix-dark { background-color: #141414; }
         .border-netflix-gray { border-color: #333; }
-
         .custom-scrollbar::-webkit-scrollbar { width: 8px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #141414; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #444; }
-
-        .agent-grid {
-            display: grid;
-            grid-template-columns: repeat(40, 1fr);
-            gap: 2px;
-        }
-
-        .agent-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            cursor: pointer;
-            transition: transform 0.1s;
-        }
-
-        .agent-dot:hover {
-            transform: scale(1.5);
-            z-index: 10;
-        }
-
-        .service-card {
-            background-color: #181818;
-            border: 1px solid #333;
-            transition: all 0.2s;
-        }
-
+        .agent-grid { display: grid; grid-template-columns: repeat(40, 1fr); gap: 2px; }
+        .agent-dot { width: 8px; height: 8px; border-radius: 50%; cursor: pointer; transition: transform 0.1s, opacity 0.2s; }
+        .agent-dot:hover { transform: scale(1.5); z-index: 10; }
+        .agent-dot.dimmed { opacity: 0.08; }
+        .service-card { background-color: #181818; border: 1px solid #333; transition: all 0.2s; }
         .service-card:hover { border-color: #E50914; }
-
-        .scenario-card {
-            background-color: #1a1a1a;
-            border: 1px solid #333;
-            border-left: 3px solid #E50914;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .scenario-card:hover {
-            background-color: #222;
-            border-color: #E50914;
-        }
+        .scenario-card { background-color: #1a1a1a; border: 1px solid #333; border-left: 3px solid #E50914; cursor: pointer; transition: all 0.2s; }
+        .scenario-card:hover { background-color: #222; border-color: #E50914; }
+        .assumption-badge { display: inline-block; font-size: 9px; background: #2a2000; color: #FFCC00; border: 1px solid #664400; border-radius: 3px; padding: 1px 5px; margin-left: 6px; vertical-align: middle; letter-spacing: 0.05em; }
     </style>
 </head>
-
 <body class="bg-black text-white antialiased custom-scrollbar">
-    <div id="app" class="min-h-screen flex flex-col">
-        <!-- Navigation -->
-        <nav class="bg-black border-b border-netflix-gray px-6 py-4 flex justify-between items-center sticky top-0 z-50">
-            <div class="flex items-center space-x-8">
-                <h1 class="text-2xl font-bold netflix-red tracking-tighter uppercase italic cursor-pointer"
-                    onclick="location.reload()">StreamSim</h1>
-                <div class="hidden md:flex space-x-4 text-sm font-medium text-gray-400">
-                    <span class="text-white cursor-pointer">Dashboard</span>
-                    <span class="hover:text-white cursor-pointer" onclick="showModal('insights')">Insights</span>
-                    <span class="hover:text-white cursor-pointer" onclick="showModal('scenarios')">Scenarios</span>
-                </div>
-            </div>
-            <div class="flex items-center space-x-6 text-sm">
-                <div id="monthDisplay" class="font-mono text-gray-400">Month: 0 / 48</div>
-                <button id="runBtn" class="bg-netflix-red px-6 py-2 rounded font-bold hover:bg-red-700 transition">Run Simulation</button>
-                <button id="resetBtn" class="border border-gray-600 px-4 py-2 rounded font-bold hover:bg-gray-800 transition">Reset</button>
-                <button id="downloadBtn" class="text-gray-400 hover:text-white transition" title="Download CSV">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
-                    </svg>
-                </button>
-            </div>
-        </nav>
+<div id="app" class="min-h-screen flex flex-col">
 
-        <main class="flex-1 p-6 grid grid-cols-12 gap-6 overflow-hidden">
-            <!-- Sidebar / Settings -->
-            <div class="col-span-12 lg:col-span-3 space-y-6 overflow-y-auto custom-scrollbar pr-2"
-                style="max-height: calc(100vh - 120px);">
-
-                <!-- Macro Parameters -->
-                <section class="bg-netflix-dark p-5 rounded-lg border border-netflix-gray">
-                    <h2 class="text-lg font-bold mb-4 flex items-center">
-                        <svg class="w-5 h-5 mr-2 netflix-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
-                        </svg>
-                        Global Market
-                    </h2>
-                    <div class="space-y-4">
-                        <div>
-                            <div class="flex justify-between text-xs mb-1">
-                                <label class="text-gray-400">Real Wage Growth</label>
-                                <span id="walletVal" class="text-white">0%</span>
-                            </div>
-                            <input type="range" id="walletPressure" min="-5" max="5" step="0.1" value="0"
-                                class="w-full accent-red-600">
-                            <div class="flex justify-between text-[10px] text-gray-600 mt-1">
-                                <span>High Pressure</span>
-                                <span>Growth Mode</span>
-                            </div>
-                            <div class="text-[10px] text-gray-500 mt-1">↳ Wallet pressure term: <span id="walletTerm" class="text-yellow-400">+0.000</span> added to M</div>
-                        </div>
-                        <div>
-                            <div class="flex justify-between text-xs mb-1">
-                                <label class="text-gray-400">Market Price Sensitivity (CPI)</label>
-                                <span id="cpiVal" class="text-white">2.0%</span>
-                            </div>
-                            <input type="range" id="cpi" min="0" max="10" step="0.1" value="2.0"
-                                class="w-full accent-red-600">
-                            <div class="text-[10px] text-gray-500 mt-1">↳ CPI term: <span id="cpiTerm" class="text-yellow-400">+0.040</span> added to M</div>
-                        </div>
-                        <div class="bg-black/40 p-2 rounded text-[10px] text-gray-400">
-                            Macro Multiplier <span class="font-mono text-white">M = 1 + WalletTerm + CPITerm</span><br>
-                            Current M = <span id="macroMVal" class="text-yellow-400 font-bold">1.040</span> — applied to every agent's price sensitivity, amplifying or dampening willingness-to-pay.
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Genre Distribution -->
-                <section class="bg-netflix-dark p-5 rounded-lg border border-netflix-gray">
-                    <h2 class="text-sm font-bold mb-3 text-gray-400 uppercase tracking-widest">Genre Preference Mix</h2>
-                    <p class="text-[10px] text-gray-500 mb-3">Adjust the share of agents preferring each genre. Changes take effect on next reset.</p>
-                    <div id="genreSliders" class="space-y-2"></div>
-                    <button onclick="applyGenreWeights()" class="mt-3 w-full text-[10px] border border-gray-700 rounded py-1 hover:bg-gray-800 transition">Apply &amp; Reset</button>
-                </section>
-
-                <!-- Service Controls -->
-                <section class="space-y-4">
-                    <div class="flex justify-between items-center">
-                        <h2 class="text-lg font-bold">Services</h2>
-                        <select id="kCount"
-                            class="bg-netflix-dark text-xs border border-netflix-gray rounded px-2 py-1 outline-none">
-                            <option value="2">2 Services</option>
-                            <option value="3" selected>3 Services</option>
-                            <option value="4">4 Services</option>
-                            <option value="5">5 Services</option>
-                        </select>
-                    </div>
-                    <div class="text-[10px] text-gray-500">
-                        <b class="text-gray-300">Content Quality</b> affects retention — agents rarely churn from high-quality services. <b class="text-gray-300">Content Volume</b> broadens appeal. Both interact with each agent's genre preference via a <b class="text-yellow-400">1.3× fit multiplier</b> when the service's genre focus matches the agent's preference.
-                    </div>
-                    <div id="servicesList" class="space-y-4"></div>
-                </section>
-            </div>
-
-            <!-- Visualization Main Area -->
-            <div class="col-span-12 lg:col-span-9 space-y-6 flex flex-col overflow-y-auto custom-scrollbar"
-                style="max-height: calc(100vh - 120px);">
-
-                <!-- Top Dashboard -->
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-                    <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray flex flex-col justify-center">
-                        <span class="text-xs text-gray-400 uppercase tracking-widest">Market Saturation</span>
-                        <div id="statSaturation" class="text-2xl font-bold mt-1">0%</div>
-                    </div>
-                    <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray flex flex-col justify-center">
-                        <span class="text-xs text-gray-400 uppercase tracking-widest">Avg. Subs / User</span>
-                        <div id="statDepth" class="text-2xl font-bold mt-1">0.0</div>
-                    </div>
-                    <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray flex flex-col justify-center">
-                        <span class="text-xs text-gray-400 uppercase tracking-widest">Avg. Price Sensitivity</span>
-                        <div id="statSensitivity" class="text-2xl font-bold mt-1">0.45</div>
-                    </div>
-                    <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray flex flex-col justify-center">
-                        <span class="text-xs text-gray-400 uppercase tracking-widest">Avg. Retention</span>
-                        <div id="statRetention" class="text-2xl font-bold mt-1">—</div>
-                    </div>
-                    <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray flex flex-col justify-center">
-                        <span class="text-xs text-gray-400 uppercase tracking-widest">Macro Health</span>
-                        <div id="statMacro" class="text-2xl font-bold mt-1 text-green-500">Stable</div>
-                    </div>
-                </div>
-
-                <!-- Main chart -->
-                <div class="bg-netflix-dark p-6 rounded-lg border border-netflix-gray h-72">
-                    <h3 class="text-xs font-bold mb-2 text-gray-400 uppercase tracking-widest">Subscriber Count Over Time</h3>
-                    <canvas id="mainChart"></canvas>
-                </div>
-
-                <!-- Subscription Distribution bar chart -->
-                <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray">
-                    <h3 class="text-xs font-bold mb-3 text-gray-400 uppercase tracking-widest">Subscription Distribution (# of Services per User)</h3>
-                    <div style="height: 140px;">
-                        <canvas id="distChart"></canvas>
-                    </div>
-                </div>
-
-                <!-- Genre Preference Distribution (read-only live view) -->
-                <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray">
-                    <h3 class="text-xs font-bold mb-3 text-gray-400 uppercase tracking-widest">Genre Preference Distribution (Current Population)</h3>
-                    <div id="genreDistBars" class="space-y-2"></div>
-                </div>
-
-                <!-- Population Grid -->
-                <div class="bg-netflix-dark p-6 rounded-lg border border-netflix-gray">
-                    <h3 class="text-sm font-bold mb-4 text-gray-400 uppercase tracking-widest">Consumer Population (N=1,000)</h3>
-                    <div id="agentGrid" class="agent-grid"></div>
-                    <div class="mt-4 flex flex-wrap gap-4 text-xs text-gray-400">
-                        <div class="flex items-center">
-                            <div class="w-3 h-3 rounded-full bg-gray-700 mr-2"></div> Unsubscribed
-                        </div>
-                        <div id="legendItems" class="flex flex-wrap gap-4"></div>
-                    </div>
-                </div>
-            </div>
-        </main>
-
-        <!-- Generic Modal (Insights / Scenarios) -->
-        <div id="genericModal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[100] hidden">
-            <div class="bg-netflix-dark border border-netflix-gray p-8 rounded-xl max-w-3xl w-full relative max-h-[85vh] overflow-y-auto custom-scrollbar">
-                <button onclick="hideModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white z-10">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                    </svg>
-                </button>
-                <div id="modalContent" class="space-y-6"></div>
+    <!-- Navigation -->
+    <nav class="bg-black border-b border-netflix-gray px-6 py-4 flex justify-between items-center sticky top-0 z-50">
+        <div class="flex items-center space-x-8">
+            <h1 class="text-2xl font-bold netflix-red tracking-tighter uppercase italic cursor-pointer" onclick="location.reload()">StreamSim</h1>
+            <div class="hidden md:flex space-x-4 text-sm font-medium text-gray-400">
+                <span class="text-white cursor-pointer">Dashboard</span>
+                <span class="hover:text-white cursor-pointer" onclick="showModal('insights')">How It Works</span>
+                <span class="hover:text-white cursor-pointer" onclick="showModal('scenarios')">Scenarios</span>
             </div>
         </div>
+        <div class="flex items-center space-x-6 text-sm">
+            <div id="monthDisplay" class="font-mono text-gray-400">Month: 0 / 48</div>
+            <button id="runBtn" class="bg-netflix-red px-6 py-2 rounded font-bold hover:bg-red-700 transition">Run Simulation</button>
+            <button id="resetBtn" class="border border-gray-600 px-4 py-2 rounded font-bold hover:bg-gray-800 transition" title="Restart with current settings">Restart</button>
+            <button id="resetParamsBtn" class="border border-gray-700 px-4 py-2 rounded font-bold text-gray-500 hover:bg-gray-900 hover:text-white transition text-xs" title="Reset all parameters to defaults">Reset Params</button>
+            <button id="downloadBtn" class="text-gray-400 hover:text-white transition" title="Download CSV">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+            </button>
+        </div>
+    </nav>
 
-        <!-- Agent Detail Modal -->
-        <div id="agentModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] hidden">
-            <div class="bg-netflix-dark border border-netflix-gray p-8 rounded-xl max-w-md w-full relative max-h-[85vh] overflow-y-auto custom-scrollbar">
-                <button id="closeModal" class="absolute top-4 right-4 text-gray-400 hover:text-white">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                    </svg>
-                </button>
-                <div id="agentContent" class="space-y-6"></div>
+    <main class="flex-1 p-6 grid grid-cols-12 gap-6 overflow-hidden">
+        <!-- Sidebar -->
+        <div class="col-span-12 lg:col-span-3 space-y-6 overflow-y-auto custom-scrollbar pr-2" style="max-height: calc(100vh - 120px);">
+
+            <!-- Economy Controls -->
+            <section class="bg-netflix-dark p-5 rounded-lg border border-netflix-gray">
+                <h2 class="text-sm font-bold mb-4 text-gray-300 uppercase tracking-widest">Economy</h2>
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <label class="text-gray-400">Household Income Growth</label>
+                            <span id="walletVal" class="text-white">0%</span>
+                        </div>
+                        <input type="range" id="walletPressure" min="-5" max="5" step="0.1" value="0" class="w-full accent-red-600">
+                        <div class="flex justify-between text-[10px] text-gray-600 mt-1"><span>Recession</span><span>Boom</span></div>
+                        <div class="text-[10px] text-gray-500 mt-1">Effect on spending: <span id="walletTerm" class="text-yellow-400">±0.000</span></div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <label class="text-gray-400">Inflation Rate</label>
+                            <span id="cpiVal" class="text-white">2.0%</span>
+                        </div>
+                        <input type="range" id="cpi" min="0" max="10" step="0.1" value="2.0" class="w-full accent-red-600">
+                        <div class="text-[10px] text-gray-500 mt-1">Effect on spending: <span id="cpiTerm" class="text-yellow-400">+0.040</span></div>
+                    </div>
+                    <div class="bg-black/40 p-2 rounded text-[10px] text-gray-400">
+                        Combined spending pressure = <span id="macroMVal" class="text-yellow-400 font-bold">1.040</span><br>
+                        <span class="text-gray-600">Values above 1 make consumers more price-sensitive; below 1, less.</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Audience Genre Mix -->
+            <section class="bg-netflix-dark p-5 rounded-lg border border-netflix-gray">
+                <h2 class="text-sm font-bold mb-1 text-gray-300 uppercase tracking-widest">Audience Genre Mix</h2>
+                <p class="text-[10px] text-gray-500 mb-3">Set how many viewers prefer each type of content. Higher weight = more viewers. Click "Apply" to reshuffle the population.</p>
+                <div id="genreSliders" class="space-y-2"></div>
+                <button onclick="applyGenreWeights()" class="mt-3 w-full text-[10px] border border-gray-700 rounded py-1.5 hover:bg-gray-800 transition">Apply Changes</button>
+            </section>
+
+            <!-- Services -->
+            <section class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-lg font-bold">Streaming Services</h2>
+                    <select id="kCount" class="bg-netflix-dark text-xs border border-netflix-gray rounded px-2 py-1 outline-none">
+                        <option value="2">2 Services</option>
+                        <option value="3" selected>3 Services</option>
+                        <option value="4">4 Services</option>
+                        <option value="5">5 Services</option>
+                    </select>
+                </div>
+                <div class="text-[10px] text-gray-500">
+                    <b class="text-gray-300">Content Quality</b> keeps subscribers around — people rarely cancel a great service. <b class="text-gray-300">Content Volume</b> attracts new subscribers. <b class="text-yellow-400">Genre Focus</b> gives a 30% boost to viewers who prefer that genre.
+                </div>
+                <div id="servicesList" class="space-y-4"></div>
+            </section>
+        </div>
+
+        <!-- Main Area -->
+        <div class="col-span-12 lg:col-span-9 space-y-6 flex flex-col overflow-y-auto custom-scrollbar" style="max-height: calc(100vh - 120px);">
+
+            <!-- Stats Bar -->
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray flex flex-col justify-center">
+                    <span class="text-xs text-gray-400 uppercase tracking-widest">People Subscribed</span>
+                    <div id="statSaturation" class="text-2xl font-bold mt-1">0%</div>
+                </div>
+                <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray flex flex-col justify-center">
+                    <span class="text-xs text-gray-400 uppercase tracking-widest">Services per Person</span>
+                    <div id="statDepth" class="text-2xl font-bold mt-1">0.0</div>
+                </div>
+                <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray flex flex-col justify-center">
+                    <span class="text-xs text-gray-400 uppercase tracking-widest">Avg. Price Sensitivity</span>
+                    <div id="statSensitivity" class="text-2xl font-bold mt-1">0.45</div>
+                </div>
+                <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray flex flex-col justify-center">
+                    <span class="text-xs text-gray-400 uppercase tracking-widest">Avg. Months Subscribed</span>
+                    <div id="statRetention" class="text-2xl font-bold mt-1">—</div>
+                </div>
+                <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray flex flex-col justify-center">
+                    <span class="text-xs text-gray-400 uppercase tracking-widest">Economic Climate</span>
+                    <div id="statMacro" class="text-2xl font-bold mt-1 text-yellow-500">Stable</div>
+                </div>
             </div>
+
+            <!-- Main Chart -->
+            <div class="bg-netflix-dark p-6 rounded-lg border border-netflix-gray" style="height: 280px;">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Subscribers Over Time</h3>
+                    <div id="legendItems" class="flex flex-wrap gap-3 text-xs text-gray-400"></div>
+                </div>
+                <canvas id="mainChart" style="max-height: 220px;"></canvas>
+            </div>
+
+            <!-- Subscription Distribution -->
+            <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray">
+                <div class="flex justify-between items-start mb-3">
+                    <div>
+                        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest">How Many Services Does Each Person Subscribe To?</h3>
+                        <p class="text-[10px] text-gray-600 mt-1">Click a bar to highlight those people in the grid below.</p>
+                    </div>
+                    <button id="clearHighlightBtn" onclick="clearHighlight()" class="text-[10px] text-gray-500 hover:text-white border border-gray-700 rounded px-2 py-1 hidden">Clear highlight</button>
+                </div>
+                <div style="height: 130px;">
+                    <canvas id="distChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Service Subscriber Profiles -->
+            <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray">
+                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Who Subscribes to Each Service?</h3>
+                <div id="serviceProfiles" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+            </div>
+
+            <!-- Population Grid -->
+            <div class="bg-netflix-dark p-6 rounded-lg border border-netflix-gray">
+                <h3 class="text-sm font-bold mb-4 text-gray-400 uppercase tracking-widest">All 1,000 Simulated Viewers — click any dot</h3>
+                <div id="agentGrid" class="agent-grid"></div>
+                <div class="mt-4 flex flex-wrap gap-4 text-xs text-gray-400">
+                    <div class="flex items-center"><div class="w-3 h-3 rounded-full bg-gray-700 mr-2"></div>No subscription</div>
+                    <div id="legendDots" class="flex flex-wrap gap-4"></div>
+                    <div class="flex items-center"><div class="w-3 h-3 rounded-full mr-2" style="background: linear-gradient(135deg, #E50914 50%, #0095FF 50%)"></div>Multiple services</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Pause Notification Modal -->
+    <div id="pauseModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[200] hidden">
+        <div class="bg-netflix-dark border-2 border-yellow-500 p-8 rounded-xl max-w-lg w-full mx-4">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 rounded-full bg-yellow-500/20 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    </svg>
+                </div>
+                <h2 id="pauseModalTitle" class="text-xl font-bold text-yellow-400">Scenario Checkpoint</h2>
+            </div>
+            <p id="pauseModalBody" class="text-gray-300 text-sm mb-5 leading-relaxed"></p>
+            <div id="pauseModalSteps" class="bg-black/40 rounded p-4 mb-5 space-y-2 text-sm"></div>
+            <button onclick="dismissPauseModal()" class="w-full bg-yellow-500 text-black font-bold py-2 rounded hover:bg-yellow-400 transition">Got it — I'll adjust the settings now</button>
         </div>
     </div>
 
-    <script>
-        // --- Constants & Config ---
-        const AGENT_COUNT = 1000;
-        const MONTHS = 48;
-        const AGE_SEGMENTS = ['Gen Z', 'Millennial', 'Gen X', 'Boomer'];
-        const GENRES = ['Action', 'Drama', 'Comedy', 'Kids', 'Sci-Fi'];
-        const SERVICE_COLORS = ['#E50914', '#0095FF', '#22C55E', '#FFCC00', '#9333EA'];
+    <!-- Generic Modal (How It Works / Scenarios) -->
+    <div id="genericModal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[100] hidden">
+        <div class="bg-netflix-dark border border-netflix-gray p-8 rounded-xl max-w-3xl w-full relative max-h-[85vh] overflow-y-auto custom-scrollbar">
+            <button onclick="hideModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white z-10">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+            <div id="modalContent" class="space-y-6"></div>
+        </div>
+    </div>
 
-        // Genre weights: user-adjustable. Default equal.
-        let genreWeights = { Action: 1, Drama: 1, Comedy: 1, Kids: 1, 'Sci-Fi': 1 };
+    <!-- Agent Detail Modal -->
+    <div id="agentModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] hidden">
+        <div class="bg-netflix-dark border border-netflix-gray p-8 rounded-xl max-w-md w-full relative max-h-[85vh] overflow-y-auto custom-scrollbar">
+            <button id="closeModal" class="absolute top-4 right-4 text-gray-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+            <div id="agentContent" class="space-y-5"></div>
+        </div>
+    </div>
+</div>
 
-        // --- Simulation State ---
-        let agents = [];
-        let services = [];
-        let currentMonth = 0;
-        let isRunning = false;
-        let simInterval = null;
-        let chart = null;
-        let distChart = null;
-        let history = [];
+<script>
+// ── Constants ──────────────────────────────────────────────────────────────
+const AGENT_COUNT = 1000;
+const MONTHS = 48;
+const AGE_SEGMENTS = ['Gen Z', 'Millennial', 'Gen X', 'Boomer'];
+const GENRES = ['Action', 'Drama', 'Comedy', 'Kids', 'Sci-Fi'];
+const SERVICE_COLORS = ['#E50914', '#0095FF', '#22C55E', '#FFCC00', '#9333EA'];
+// Default genre weights: skewed toward Action/Drama
+let genreWeights = { Action: 2, Drama: 2, Comedy: 1.5, Kids: 1, 'Sci-Fi': 1.5 };
 
-        // --- Core Classes ---
-        class Agent {
-            constructor(id) {
-                this.id = id;
-                this.incomeSegment = Math.random();
-                this.ageSegment = AGE_SEGMENTS[Math.floor(Math.random() * AGE_SEGMENTS.length)];
-                this.preference = weightedGenre();
+// ── State ──────────────────────────────────────────────────────────────────
+let agents = [], services = [];
+let currentMonth = 0, isRunning = false, simInterval = null;
+let chart = null, distChart = null;
+let history = [];
+let pauseLines = [];          // months where pauses were recorded for vertical lines
+let scheduledPauses = [];     // [{month, title, body, steps}] from active scenario
+let highlightSubCount = -1;   // -1 = none; 0/1/2/3 = highlight that sub-count tier
+let insightCharts = {};
 
-                // High income → low price sensitivity
-                this.priceSensitivity = Math.max(0.1, (1.1 - this.incomeSegment) + (Math.random() * 0.2 - 0.1));
+// ── Vertical line plugin ───────────────────────────────────────────────────
+const pauseLinePlugin = {
+    id: 'pauseLines',
+    afterDraw(ch) {
+        if (!pauseLines.length) return;
+        const ctx = ch.ctx;
+        pauseLines.forEach(month => {
+            const x = ch.scales.x.getPixelForValue(month);
+            if (x < ch.chartArea.left || x > ch.chartArea.right) return;
+            ctx.save();
+            ctx.strokeStyle = '#FFCC00';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([5, 4]);
+            ctx.globalAlpha = 0.7;
+            ctx.beginPath();
+            ctx.moveTo(x, ch.chartArea.top);
+            ctx.lineTo(x, ch.chartArea.bottom);
+            ctx.stroke();
+            // Small label
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = '#FFCC00';
+            ctx.font = '9px Inter, sans-serif';
+            ctx.fillText('⏸', x - 5, ch.chartArea.top + 10);
+            ctx.restore();
+        });
+    }
+};
+Chart.register(pauseLinePlugin);
 
-                this.subscriptions = [];       // active service IDs
-                this.monthsSubscribed = {};    // serviceId → months held
-            }
+// ── Agent class ────────────────────────────────────────────────────────────
+class Agent {
+    constructor(id) {
+        this.id = id;
+        this.incomeSegment = Math.random();
+        this.ageSegment = AGE_SEGMENTS[Math.floor(Math.random() * AGE_SEGMENTS.length)];
+        this.preference = weightedGenre();
+        // Higher income → lower price sensitivity
+        this.priceSensitivity = Math.max(0.1, (1.1 - this.incomeSegment) + (Math.random() * 0.2 - 0.1));
+        this.subscriptions = [];
+        this.monthsSubscribed = {};
+    }
 
-            evaluate(services, wageGrowth, marketCPI) {
-                const walletTerm = -wageGrowth * 0.05;
-                const cpiTerm = marketCPI * 0.02;
-                const macroFactor = 1 + walletTerm + cpiTerm;
+    evaluate(services, wageGrowth, marketCPI) {
+        const spendingPressure = 1 + (-wageGrowth * 0.05) + (marketCPI * 0.02);
 
-                // --- Churn phase ---
-                this.subscriptions = this.subscriptions.filter(sid => {
-                    const s = services.find(sv => sv.id === sid);
-                    if (!s) return false;
-
-                    // Tick tenure
-                    this.monthsSubscribed[sid] = (this.monthsSubscribed[sid] || 0) + 1;
-
-                    // Retention: primarily driven by content quality.
-                    // High quality → very sticky; low quality → high churn risk.
-                    const qualityRetention = s.quality / 10; // 0–1
-                    let churnProb;
-                    if (s.quality >= 7) {
-                        churnProb = 0.01; // Almost never leave a great service
-                    } else if (s.quality >= 4) {
-                        // Moderate quality: utility matters more
-                        const prefFit = s.genreFocus === this.preference ? 1.3 : 1.0;
-                        const u = (s.quality * 0.6 + s.contentVolume * 0.4) * prefFit
-                            - (s.price * this.priceSensitivity * macroFactor);
-                        churnProb = u < 2 ? 0.15 : (u < 4 ? 0.05 : 0.02);
-                    } else {
-                        // Low quality: high churn regardless
-                        churnProb = 0.35;
-                    }
-
-                    return Math.random() > churnProb;
-                });
-
-                // Clean up tenure for churned subs
-                Object.keys(this.monthsSubscribed).forEach(sid => {
-                    if (!this.subscriptions.includes(parseInt(sid))) {
-                        delete this.monthsSubscribed[sid];
-                    }
-                });
-
-                // --- Subscribe phase ---
-                // Find best unsubscribed service by utility
-                let bestService = null;
-                let maxUtility = -Infinity;
-                services.forEach(s => {
-                    if (this.subscriptions.includes(s.id)) return;
-                    const prefFit = s.contentVolume > 0 && s.genreFocus === this.preference ? 1.3 : 1.0;
-                    const u = (s.quality * 0.6 + s.contentVolume * 0.4) * prefFit
-                        - (s.price * this.priceSensitivity * macroFactor);
-                    if (u > maxUtility) { maxUtility = u; bestService = s; }
-                });
-
-                if (this.subscriptions.length < 3 && bestService) {
-                    const subMultiplier = this.subscriptions.length === 0 ? 1.0
-                        : this.subscriptions.length === 1 ? 0.5 : 0.2;
-                    const subProb = (maxUtility > 5 ? 0.4 : maxUtility > 3 ? 0.1 : 0.02) * subMultiplier;
-                    if (Math.random() < subProb) {
-                        this.subscriptions.push(bestService.id);
-                        this.monthsSubscribed[bestService.id] = 0;
-                    }
-                }
-            }
-
-            // Returns per-service subscribe probability for display
-            subscribeProbs(macroFactor) {
-                return services.map(s => {
-                    const prefFit = s.contentVolume > 0 && s.genreFocus === this.preference ? 1.3 : 1.0;
-                    const u = (s.quality * 0.6 + s.contentVolume * 0.4) * prefFit
-                        - (s.price * this.priceSensitivity * macroFactor);
-                    const alreadySub = this.subscriptions.includes(s.id);
-                    let baseProb = u > 5 ? 0.40 : u > 3 ? 0.10 : 0.02;
-                    // Marginal decay based on current sub count (excluding this service)
-                    const currentCount = this.subscriptions.filter(id => id !== s.id).length;
-                    const decay = currentCount === 0 ? 1.0 : currentCount === 1 ? 0.5 : 0.2;
-                    return { service: s, utility: u, prob: alreadySub ? null : baseProb * decay, alreadySub };
-                });
-            }
-
-            // Returns churn probability for currently subscribed services
-            churnProbs(macroFactor) {
-                return this.subscriptions.map(sid => {
-                    const s = services.find(sv => sv.id === sid);
-                    if (!s) return null;
-                    let churnProb;
-                    if (s.quality >= 7) {
-                        churnProb = 0.01;
-                    } else if (s.quality >= 4) {
-                        const prefFit = s.genreFocus === this.preference ? 1.3 : 1.0;
-                        const u = (s.quality * 0.6 + s.contentVolume * 0.4) * prefFit
-                            - (s.price * this.priceSensitivity * macroFactor);
-                        churnProb = u < 2 ? 0.15 : (u < 4 ? 0.05 : 0.02);
-                    } else {
-                        churnProb = 0.35;
-                    }
-                    return { service: s, churnProb, months: this.monthsSubscribed[sid] || 0 };
-                }).filter(Boolean);
-            }
-        }
-
-        class Service {
-            constructor(id, name, color) {
-                this.id = id;
-                this.name = name;
-                this.color = color;
-                this.price = 10 + Math.random() * 10;
-                this.quality = 5 + Math.random() * 5;
-                this.contentVolume = 5 + Math.random() * 5;
-                this.genreFocus = GENRES[Math.floor(Math.random() * GENRES.length)];
-            }
-        }
-
-        function weightedGenre() {
-            const total = Object.values(genreWeights).reduce((a, b) => a + b, 0);
-            let r = Math.random() * total;
-            for (const g of GENRES) {
-                r -= genreWeights[g];
-                if (r <= 0) return g;
-            }
-            return GENRES[GENRES.length - 1];
-        }
-
-        function getMacroFactor() {
-            const wageGrowth = parseFloat(document.getElementById('walletPressure').value);
-            const marketCPI = parseFloat(document.getElementById('cpi').value);
-            return 1 + (-wageGrowth * 0.05) + (marketCPI * 0.02);
-        }
-
-        // --- Initialization ---
-        function initSim(overrides) {
-            // Apply overrides if provided (from scenario loading)
-            if (overrides) {
-                if (overrides.walletPressure !== undefined) {
-                    document.getElementById('walletPressure').value = overrides.walletPressure;
-                }
-                if (overrides.cpi !== undefined) {
-                    document.getElementById('cpi').value = overrides.cpi;
-                }
-                if (overrides.kCount !== undefined) {
-                    document.getElementById('kCount').value = overrides.kCount;
-                }
-                if (overrides.genreWeights !== undefined) {
-                    genreWeights = { ...overrides.genreWeights };
-                }
-            }
-
-            // Sync slider display
-            const wage = parseFloat(document.getElementById('walletPressure').value);
-            document.getElementById('walletVal').innerText = (wage > 0 ? '+' : '') + wage + '%';
-            const cpi = parseFloat(document.getElementById('cpi').value);
-            document.getElementById('cpiVal').innerText = cpi.toFixed(1) + '%';
-            updateMacroDisplay();
-
-            agents = Array.from({ length: AGENT_COUNT }, (_, i) => new Agent(i));
-            const k = parseInt(document.getElementById('kCount').value);
-            services = [];
-            const names = ['NetStream', 'CineMax', 'GlowTV', 'EdgeVideo', 'PrimeWatch'];
-
-            if (overrides && overrides.services) {
-                overrides.services.forEach((cfg, i) => {
-                    const svc = new Service(i, names[i], SERVICE_COLORS[i]);
-                    Object.assign(svc, cfg);
-                    services.push(svc);
-                });
+        // Churn phase
+        this.subscriptions = this.subscriptions.filter(sid => {
+            const s = services.find(sv => sv.id === sid);
+            if (!s) return false;
+            this.monthsSubscribed[sid] = (this.monthsSubscribed[sid] || 0) + 1;
+            // Retention is primarily driven by content quality
+            let churnProb;
+            if (s.quality >= 7) {
+                churnProb = 0.01;
+            } else if (s.quality >= 4) {
+                const fit = s.genreFocus === this.preference ? 1.3 : 1.0;
+                const u = (s.quality * 0.6 + s.contentVolume * 0.4) * fit - (s.price * this.priceSensitivity * spendingPressure);
+                churnProb = u < 2 ? 0.15 : (u < 4 ? 0.05 : 0.02);
             } else {
-                for (let i = 0; i < k; i++) {
-                    services.push(new Service(i, names[i], SERVICE_COLORS[i]));
-                }
+                churnProb = 0.35;
             }
+            return Math.random() > churnProb;
+        });
 
-            currentMonth = 0;
-            history = [];
-            isRunning = false;
-            if (simInterval) clearInterval(simInterval);
+        // Clean up tenure for services that were churned
+        Object.keys(this.monthsSubscribed).forEach(sid => {
+            if (!this.subscriptions.includes(parseInt(sid))) delete this.monthsSubscribed[sid];
+        });
 
-            document.getElementById('runBtn').innerText = 'Run Simulation';
-
-            renderServices();
-            renderGenreSliders();
-            renderGenreDist();
-            updateStats();
-            initChart();
-            initDistChart();
-            renderGrid();
-            updateUI();
+        // Subscribe phase — find best unsubscribed service
+        let bestSvc = null, maxU = -Infinity;
+        services.forEach(s => {
+            if (this.subscriptions.includes(s.id)) return;
+            const fit = s.contentVolume > 0 && s.genreFocus === this.preference ? 1.3 : 1.0;
+            const u = (s.quality * 0.6 + s.contentVolume * 0.4) * fit - (s.price * this.priceSensitivity * spendingPressure);
+            if (u > maxU) { maxU = u; bestSvc = s; }
+        });
+        if (this.subscriptions.length < 3 && bestSvc) {
+            const decay = this.subscriptions.length === 0 ? 1.0 : this.subscriptions.length === 1 ? 0.5 : 0.2;
+            const prob = (maxU > 5 ? 0.4 : maxU > 3 ? 0.1 : 0.02) * decay;
+            if (Math.random() < prob) {
+                this.subscriptions.push(bestSvc.id);
+                this.monthsSubscribed[bestSvc.id] = 0;
+            }
         }
+    }
 
-        // --- Genre helpers ---
-        function renderGenreSliders() {
-            const container = document.getElementById('genreSliders');
-            container.innerHTML = '';
-            GENRES.forEach(g => {
-                const row = document.createElement('div');
-                row.innerHTML = `
+    subscribeProbs(spendingPressure) {
+        return services.map(s => {
+            const fit = s.contentVolume > 0 && s.genreFocus === this.preference ? 1.3 : 1.0;
+            const u = (s.quality * 0.6 + s.contentVolume * 0.4) * fit - (s.price * this.priceSensitivity * spendingPressure);
+            const alreadySub = this.subscriptions.includes(s.id);
+            const currentCount = this.subscriptions.filter(id => id !== s.id).length;
+            const decay = currentCount === 0 ? 1.0 : currentCount === 1 ? 0.5 : 0.2;
+            const baseProb = u > 5 ? 0.40 : u > 3 ? 0.10 : 0.02;
+            return { service: s, utility: u, prob: alreadySub ? null : baseProb * decay, alreadySub, genreMatch: s.genreFocus === this.preference };
+        });
+    }
+
+    churnRisks(spendingPressure) {
+        return this.subscriptions.map(sid => {
+            const s = services.find(sv => sv.id === sid);
+            if (!s) return null;
+            let churnProb;
+            if (s.quality >= 7) { churnProb = 0.01; }
+            else if (s.quality >= 4) {
+                const fit = s.genreFocus === this.preference ? 1.3 : 1.0;
+                const u = (s.quality * 0.6 + s.contentVolume * 0.4) * fit - (s.price * this.priceSensitivity * spendingPressure);
+                churnProb = u < 2 ? 0.15 : (u < 4 ? 0.05 : 0.02);
+            } else { churnProb = 0.35; }
+            return { service: s, churnProb, months: this.monthsSubscribed[sid] || 0 };
+        }).filter(Boolean);
+    }
+}
+
+class Service {
+    constructor(id, name, color) {
+        this.id = id; this.name = name; this.color = color;
+        this.price = 10 + Math.random() * 10;
+        this.quality = 5 + Math.random() * 5;
+        this.contentVolume = 5 + Math.random() * 5;
+        this.genreFocus = GENRES[Math.floor(Math.random() * GENRES.length)];
+    }
+}
+
+function weightedGenre() {
+    const total = Object.values(genreWeights).reduce((a, b) => a + b, 0);
+    let r = Math.random() * total;
+    for (const g of GENRES) { r -= genreWeights[g]; if (r <= 0) return g; }
+    return GENRES[GENRES.length - 1];
+}
+
+function getSpendingPressure() {
+    const w = parseFloat(document.getElementById('walletPressure').value);
+    const c = parseFloat(document.getElementById('cpi').value);
+    return 1 + (-w * 0.05) + (c * 0.02);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+function initSim(overrides) {
+    // keepParams: restart the sim but preserve all current slider/service settings
+    if (overrides?.keepParams) {
+        overrides = {
+            walletPressure: parseFloat(document.getElementById('walletPressure').value),
+            cpi:            parseFloat(document.getElementById('cpi').value),
+            kCount:         parseInt(document.getElementById('kCount').value),
+            genreWeights:   { ...genreWeights },
+            services:       services.map(s => ({
+                price: s.price, quality: s.quality,
+                contentVolume: s.contentVolume, genreFocus: s.genreFocus
+            }))
+        };
+    }
+
+    if (overrides) {
+        if (overrides.walletPressure !== undefined) document.getElementById('walletPressure').value = overrides.walletPressure;
+        if (overrides.cpi !== undefined) document.getElementById('cpi').value = overrides.cpi;
+        if (overrides.kCount !== undefined) document.getElementById('kCount').value = overrides.kCount;
+        if (overrides.genreWeights !== undefined) genreWeights = { ...overrides.genreWeights };
+    }
+    syncSliderLabels();
+
+    agents = Array.from({ length: AGENT_COUNT }, (_, i) => new Agent(i));
+    const k = parseInt(document.getElementById('kCount').value);
+    const names = ['NetStream', 'CineMax', 'GlowTV', 'EdgeVideo', 'PrimeWatch'];
+    services = [];
+    if (overrides?.services) {
+        overrides.services.forEach((cfg, i) => {
+            const s = new Service(i, names[i], SERVICE_COLORS[i]);
+            Object.assign(s, cfg);
+            services.push(s);
+        });
+    } else {
+        for (let i = 0; i < k; i++) services.push(new Service(i, names[i], SERVICE_COLORS[i]));
+    }
+
+    currentMonth = 0;
+    history = [];
+    pauseLines = [];
+    scheduledPauses = overrides?.pauseEvents ? [...overrides.pauseEvents] : [];
+    isRunning = false;
+    highlightSubCount = -1;
+    if (simInterval) clearInterval(simInterval);
+    document.getElementById('runBtn').innerText = 'Run Simulation';
+    document.getElementById('clearHighlightBtn').classList.add('hidden');
+
+    renderGenreSliders();
+    renderServices();
+    initChart();
+    initDistChart();
+    renderGrid();
+    updateStats();
+    updateUI();
+    renderServiceProfiles();
+}
+
+// ── Genre ──────────────────────────────────────────────────────────────────
+function renderGenreSliders() {
+    const c = document.getElementById('genreSliders');
+    c.innerHTML = '';
+    GENRES.forEach(g => {
+        const row = document.createElement('div');
+        row.innerHTML = `
+            <div class="flex justify-between text-[10px] mb-1">
+                <label class="text-gray-400">${g}</label>
+                <span id="gw_${g}" class="text-white">${genreWeights[g].toFixed(1)}</span>
+            </div>
+            <input type="range" id="gslider_${g}" min="0" max="5" step="0.1" value="${genreWeights[g]}" class="w-full accent-red-600">`;
+        c.appendChild(row);
+        row.querySelector('input').addEventListener('input', e => {
+            genreWeights[g] = parseFloat(e.target.value);
+            document.getElementById(`gw_${g}`).innerText = genreWeights[g].toFixed(1);
+        });
+    });
+}
+
+function applyGenreWeights() {
+    agents.forEach(a => { a.preference = weightedGenre(); });
+    renderGrid();
+    updateStats();
+    renderServiceProfiles();
+}
+
+// ── Services ───────────────────────────────────────────────────────────────
+function renderServices() {
+    const list = document.getElementById('servicesList');
+    list.innerHTML = '';
+    services.forEach(s => {
+        const card = document.createElement('div');
+        card.className = 'service-card p-4 rounded-lg space-y-3';
+        card.innerHTML = `
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <div class="w-3 h-3 rounded-full" style="background-color:${s.color}"></div>
+                    <h3 class="font-bold text-sm">${s.name}</h3>
+                </div>
+                <select data-id="${s.id}" data-prop="genreFocus" class="bg-[#111] text-[9px] border border-gray-700 rounded px-1 outline-none text-gray-300">
+                    ${GENRES.map(g => `<option value="${g}" ${s.genreFocus === g ? 'selected' : ''}>${g}</option>`).join('')}
+                </select>
+            </div>
+            <div class="space-y-2">
+                ${[['price','Price ($)', s.price, 5, 30, 1, '$' + s.price.toFixed(2)],
+                   ['quality','Content Quality', s.quality, 0, 10, 0.1, s.quality.toFixed(1)],
+                   ['contentVolume','Content Volume', s.contentVolume, 0, 10, 0.1, s.contentVolume.toFixed(1)]].map(([prop, label, val, min, max, step, display]) => `
+                <div>
                     <div class="flex justify-between text-[10px] mb-1">
-                        <label class="text-gray-400">${g}</label>
-                        <span id="gw_${g}" class="text-white">${genreWeights[g]}</span>
+                        <label class="text-gray-500 uppercase">${label}</label>
+                        <span class="text-white">${display}</span>
                     </div>
-                    <input type="range" id="gslider_${g}" min="0" max="5" step="0.1" value="${genreWeights[g]}" class="w-full accent-red-600">
-                `;
-                container.appendChild(row);
-                row.querySelector('input').addEventListener('input', e => {
-                    genreWeights[g] = parseFloat(e.target.value);
-                    document.getElementById(`gw_${g}`).innerText = parseFloat(e.target.value).toFixed(1);
-                });
-            });
-        }
+                    <input type="range" data-id="${s.id}" data-prop="${prop}" min="${min}" max="${max}" step="${step}" value="${val}" class="w-full accent-red-600">
+                </div>`).join('')}
+            </div>`;
+        list.appendChild(card);
+    });
 
-        function applyGenreWeights() {
-            // Re-sample agent preferences using updated weights, then re-render
-            agents.forEach(a => { a.preference = weightedGenre(); });
-            renderGenreDist();
-            renderGrid();
-            updateStats();
-        }
+    const legend = document.getElementById('legendItems');
+    legend.innerHTML = services.map(s =>
+        `<div class="flex items-center"><div class="w-3 h-3 rounded-full mr-1.5" style="background-color:${s.color}"></div>${s.name}</div>`
+    ).join('');
+    const legendDots = document.getElementById('legendDots');
+    legendDots.innerHTML = services.map(s =>
+        `<div class="flex items-center"><div class="w-3 h-3 rounded-full mr-1.5" style="background-color:${s.color}"></div>${s.name}</div>`
+    ).join('');
 
-        function renderGenreDist() {
-            const container = document.getElementById('genreDistBars');
-            container.innerHTML = '';
-            const counts = {};
-            GENRES.forEach(g => { counts[g] = 0; });
-            agents.forEach(a => { if (counts[a.preference] !== undefined) counts[a.preference]++; });
-            GENRES.forEach(g => {
-                const pct = (counts[g] / AGENT_COUNT * 100).toFixed(1);
-                container.innerHTML += `
-                    <div class="flex items-center gap-3 text-[11px]">
-                        <span class="w-12 text-gray-400 text-right">${g}</span>
-                        <div class="flex-1 bg-gray-800 rounded h-3 overflow-hidden">
-                            <div class="h-3 bg-red-700 rounded transition-all duration-300" style="width:${pct}%"></div>
-                        </div>
-                        <span class="w-10 text-gray-400">${pct}%</span>
-                    </div>`;
-            });
-        }
-
-        // --- UI Rendering ---
-        function renderServices() {
-            const list = document.getElementById('servicesList');
-            list.innerHTML = '';
-            services.forEach(s => {
-                const card = document.createElement('div');
-                card.className = 'service-card p-4 rounded-lg space-y-3';
-                card.innerHTML = `
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center space-x-2">
-                            <div class="w-3 h-3 rounded-full" style="background-color: ${s.color}"></div>
-                            <h3 class="font-bold text-sm">${s.name}</h3>
-                        </div>
-                        <select data-id="${s.id}" data-prop="genreFocus" class="bg-[#111] text-[9px] border border-gray-700 rounded px-1 outline-none text-gray-300">
-                            ${GENRES.map(g => `<option value="${g}" ${s.genreFocus === g ? 'selected' : ''}>${g}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="space-y-2">
-                        <div>
-                            <div class="flex justify-between text-[10px] mb-1">
-                                <label class="text-gray-500 uppercase">Price ($)</label>
-                                <span class="text-white">$${s.price.toFixed(2)}</span>
-                            </div>
-                            <input type="range" data-id="${s.id}" data-prop="price" min="5" max="30" value="${s.price}" class="w-full accent-red-600">
-                        </div>
-                        <div>
-                            <div class="flex justify-between text-[10px] mb-1">
-                                <label class="text-gray-500 uppercase">Content Quality</label>
-                                <span class="text-white">${s.quality.toFixed(1)}</span>
-                            </div>
-                            <input type="range" data-id="${s.id}" data-prop="quality" min="0" max="10" step="0.1" value="${s.quality}" class="w-full accent-red-600">
-                        </div>
-                        <div>
-                            <div class="flex justify-between text-[10px] mb-1">
-                                <label class="text-gray-500 uppercase">Content Volume</label>
-                                <span class="text-white">${s.contentVolume.toFixed(1)}</span>
-                            </div>
-                            <input type="range" data-id="${s.id}" data-prop="contentVolume" min="0" max="10" step="0.1" value="${s.contentVolume}" class="w-full accent-red-600">
-                        </div>
-                    </div>
-                `;
-                list.appendChild(card);
-            });
-
-            // Legend
-            const legend = document.getElementById('legendItems');
-            legend.innerHTML = services.map(s =>
-                `<div class="flex items-center"><div class="w-3 h-3 rounded-full mr-2" style="background-color: ${s.color}"></div> ${s.name}</div>`
-            ).join('');
-
-            // Input events
-            list.querySelectorAll('input, select').forEach(input => {
-                input.addEventListener('input', e => {
-                    const id = parseInt(e.target.dataset.id);
-                    const prop = e.target.dataset.prop;
-                    const service = services.find(sv => sv.id === id);
-                    if (service) {
-                        const val = e.target.tagName === 'SELECT' ? e.target.value : parseFloat(e.target.value);
-                        service[prop] = val;
-                        if (e.target.tagName === 'INPUT') {
-                            e.target.previousElementSibling.querySelector('span').innerText =
-                                prop === 'price' ? '$' + val.toFixed(2) : val.toFixed(1);
-                        }
-                    }
-                });
-            });
-        }
-
-        function renderGrid() {
-            const grid = document.getElementById('agentGrid');
-            grid.innerHTML = '';
-            agents.forEach(agent => {
-                const dot = document.createElement('div');
-                dot.className = 'agent-dot';
-                dot.id = `agent-${agent.id}`;
-                updateDot(dot, agent);
-                dot.onclick = () => showAgentDetails(agent);
-                grid.appendChild(dot);
-            });
-        }
-
-        function updateDot(dot, agent) {
-            if (agent.subscriptions.length === 0) {
-                dot.style.backgroundColor = '#333';
-                dot.style.boxShadow = 'none';
-            } else {
-                const sId = agent.subscriptions[0];
-                const s = services.find(sv => sv.id === sId);
-                dot.style.backgroundColor = s ? s.color : '#333';
-                dot.style.boxShadow = agent.subscriptions.length > 1 ? '0 0 4px white' : 'none';
+    list.querySelectorAll('input, select').forEach(input => {
+        input.addEventListener('input', e => {
+            const id = parseInt(e.target.dataset.id);
+            const prop = e.target.dataset.prop;
+            const svc = services.find(sv => sv.id === id);
+            if (!svc) return;
+            const val = e.target.tagName === 'SELECT' ? e.target.value : parseFloat(e.target.value);
+            svc[prop] = val;
+            if (e.target.tagName === 'INPUT') {
+                e.target.previousElementSibling.querySelector('span').innerText =
+                    prop === 'price' ? '$' + val.toFixed(2) : val.toFixed(1);
             }
-        }
+        });
+    });
+}
 
-        function initChart() {
-            const ctx = document.getElementById('mainChart').getContext('2d');
-            if (chart) chart.destroy();
-            const datasets = services.map(s => ({
+// ── Grid ───────────────────────────────────────────────────────────────────
+function renderGrid() {
+    const grid = document.getElementById('agentGrid');
+    grid.innerHTML = '';
+    agents.forEach(agent => {
+        const dot = document.createElement('div');
+        dot.className = 'agent-dot';
+        dot.id = `agent-${agent.id}`;
+        styleDot(dot, agent);
+        dot.onclick = () => showAgentDetails(agent);
+        grid.appendChild(dot);
+    });
+}
+
+function styleDot(dot, agent) {
+    const n = agent.subscriptions.length;
+    if (n === 0) {
+        dot.style.background = '#333';
+        dot.style.boxShadow = 'none';
+    } else if (n === 1) {
+        const s = services.find(sv => sv.id === agent.subscriptions[0]);
+        dot.style.background = s ? s.color : '#333';
+        dot.style.boxShadow = 'none';
+    } else if (n === 2) {
+        const c1 = services.find(sv => sv.id === agent.subscriptions[0])?.color || '#333';
+        const c2 = services.find(sv => sv.id === agent.subscriptions[1])?.color || '#333';
+        dot.style.background = `linear-gradient(135deg, ${c1} 50%, ${c2} 50%)`;
+        dot.style.boxShadow = 'none';
+    } else {
+        const c1 = services.find(sv => sv.id === agent.subscriptions[0])?.color || '#333';
+        const c2 = services.find(sv => sv.id === agent.subscriptions[1])?.color || '#333';
+        const c3 = services.find(sv => sv.id === agent.subscriptions[2])?.color || '#333';
+        dot.style.background = `conic-gradient(${c1} 0deg 120deg, ${c2} 120deg 240deg, ${c3} 240deg 360deg)`;
+        dot.style.boxShadow = 'none';
+    }
+    // Apply highlight dimming
+    const subTier = Math.min(n, 3);
+    if (highlightSubCount >= 0 && subTier !== highlightSubCount) {
+        dot.classList.add('dimmed');
+    } else {
+        dot.classList.remove('dimmed');
+    }
+}
+
+function clearHighlight() {
+    highlightSubCount = -1;
+    document.getElementById('clearHighlightBtn').classList.add('hidden');
+    agents.forEach(agent => {
+        const dot = document.getElementById(`agent-${agent.id}`);
+        if (dot) dot.classList.remove('dimmed');
+    });
+}
+
+// ── Charts ─────────────────────────────────────────────────────────────────
+function initChart() {
+    const ctx = document.getElementById('mainChart').getContext('2d');
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: Array.from({ length: MONTHS + 1 }, (_, i) => i),
+            datasets: services.map(s => ({
                 label: s.name,
                 data: [],
                 borderColor: s.color,
-                backgroundColor: s.color + '22',
+                backgroundColor: s.color + '18',
                 fill: true,
-                tension: 0.4
-            }));
-            chart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: Array.from({ length: MONTHS + 1 }, (_, i) => i),
-                    datasets
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { beginAtZero: true, max: 1000, grid: { color: '#222' }, ticks: { color: '#666' } },
-                        x: { grid: { color: '#222' }, ticks: { color: '#666' } }
-                    },
-                    plugins: { legend: { display: false } }
+                tension: 0.4,
+                pointRadius: 0
+            }))
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true, max: 1000, grid: { color: '#222' }, ticks: { color: '#666' } },
+                x: { grid: { color: '#1a1a1a' }, ticks: { color: '#666' } }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+}
+
+function initDistChart() {
+    const ctx = document.getElementById('distChart').getContext('2d');
+    if (distChart) distChart.destroy();
+    distChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['0 services', '1 service', '2 services', '3 services'],
+            datasets: [{ label: 'People', data: [AGENT_COUNT, 0, 0, 0], backgroundColor: ['#444', '#0095FF88', '#22C55E88', '#E5091488'], borderColor: ['#666', '#0095FF', '#22C55E', '#E50914'], borderWidth: 1, borderRadius: 4 }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            onClick(_, elements) {
+                if (!elements.length) return;
+                const idx = elements[0].index; // 0,1,2,3
+                if (highlightSubCount === idx) {
+                    clearHighlight();
+                } else {
+                    highlightSubCount = idx;
+                    document.getElementById('clearHighlightBtn').classList.remove('hidden');
+                    agents.forEach(agent => {
+                        const dot = document.getElementById(`agent-${agent.id}`);
+                        if (!dot) return;
+                        const tier = Math.min(agent.subscriptions.length, 3);
+                        if (tier === idx) { dot.classList.remove('dimmed'); }
+                        else { dot.classList.add('dimmed'); }
+                    });
+                    // Scroll to grid
+                    document.getElementById('agentGrid').scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
-            });
+            },
+            scales: {
+                y: { beginAtZero: true, max: AGENT_COUNT, grid: { color: '#222' }, ticks: { color: '#666' } },
+                x: { grid: { color: '#111' }, ticks: { color: '#666' } }
+            },
+            plugins: { legend: { display: false } }
         }
+    });
+}
 
-        function initDistChart() {
-            const ctx = document.getElementById('distChart').getContext('2d');
-            if (distChart) distChart.destroy();
-            distChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: ['0 Services', '1 Service', '2 Services', '3+ Services'],
-                    datasets: [{
-                        label: 'Users',
-                        data: [AGENT_COUNT, 0, 0, 0],
-                        backgroundColor: ['#444', '#0095FF', '#22C55E', '#E50914'],
-                        borderRadius: 4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { beginAtZero: true, max: AGENT_COUNT, grid: { color: '#222' }, ticks: { color: '#666' } },
-                        x: { grid: { color: '#111' }, ticks: { color: '#666' } }
-                    },
-                    plugins: { legend: { display: false } }
-                }
-            });
+// ── Service subscriber profiles ────────────────────────────────────────────
+function renderServiceProfiles() {
+    const container = document.getElementById('serviceProfiles');
+    if (!services.length || !agents.length) { container.innerHTML = '<p class="text-gray-600 text-xs">Run the simulation to see subscriber profiles.</p>'; return; }
+    container.innerHTML = '';
+    services.forEach(s => {
+        const subs = agents.filter(a => a.subscriptions.includes(s.id));
+        if (subs.length === 0) {
+            container.innerHTML += `<div class="bg-black/40 p-3 rounded"><div class="flex items-center gap-2 mb-2"><div class="w-2 h-2 rounded-full" style="background-color:${s.color}"></div><span class="font-bold text-xs">${s.name}</span><span class="text-gray-600 text-[10px]">0 subscribers</span></div><p class="text-[10px] text-gray-600 italic">No subscribers yet</p></div>`;
+            return;
         }
+        const ageCounts = {};
+        AGE_SEGMENTS.forEach(a => { ageCounts[a] = 0; });
+        subs.forEach(a => { ageCounts[a.ageSegment]++; });
+        const genreCounts = {};
+        GENRES.forEach(g => { genreCounts[g] = 0; });
+        subs.forEach(a => { genreCounts[a.preference]++; });
+        const maxAge = Math.max(...Object.values(ageCounts));
+        const maxGenre = Math.max(...Object.values(genreCounts));
 
-        // --- Simulation Step ---
-        function step() {
-            if (currentMonth >= MONTHS) {
-                isRunning = false;
-                clearInterval(simInterval);
-                document.getElementById('runBtn').innerText = 'Simulation Finished';
-                return;
-            }
-
-            currentMonth++;
-            const wageGrowth = parseFloat(document.getElementById('walletPressure').value);
-            const marketCPI = parseFloat(document.getElementById('cpi').value);
-
-            agents.forEach(agent => {
-                agent.evaluate(services, wageGrowth, marketCPI);
-                const dot = document.getElementById(`agent-${agent.id}`);
-                if (dot) updateDot(dot, agent);
-            });
-
-            const counts = {};
-            services.forEach(s => {
-                counts[s.id] = agents.filter(a => a.subscriptions.includes(s.id)).length;
-            });
-            history.push({ month: currentMonth, counts });
-
-            updateUI();
-            updateChart();
-            updateStats();
-        }
-
-        function updateUI() {
-            document.getElementById('monthDisplay').innerText = `Month: ${currentMonth} / ${MONTHS}`;
-        }
-
-        function updateChart() {
-            services.forEach((s, i) => {
-                chart.data.datasets[i].data = [0, ...history.map(h => h.counts[s.id])];
-            });
-            chart.update('none');
-        }
-
-        function updateMacroDisplay() {
-            const wage = parseFloat(document.getElementById('walletPressure').value);
-            const cpi = parseFloat(document.getElementById('cpi').value);
-            const walletTerm = -wage * 0.05;
-            const cpiTerm = cpi * 0.02;
-            const M = 1 + walletTerm + cpiTerm;
-            document.getElementById('walletTerm').innerText = (walletTerm >= 0 ? '+' : '') + walletTerm.toFixed(3);
-            document.getElementById('cpiTerm').innerText = '+' + cpiTerm.toFixed(3);
-            document.getElementById('macroMVal').innerText = M.toFixed(3);
-        }
-
-        function updateStats() {
-            const totalSubs = agents.reduce((acc, a) => acc + (a.subscriptions.length > 0 ? 1 : 0), 0);
-            document.getElementById('statSaturation').innerText = (totalSubs / AGENT_COUNT * 100).toFixed(1) + '%';
-
-            const totalSubCount = agents.reduce((acc, a) => acc + a.subscriptions.length, 0);
-            document.getElementById('statDepth').innerText = (totalSubCount / AGENT_COUNT).toFixed(1);
-
-            const avgSens = (agents.reduce((acc, a) => acc + a.priceSensitivity, 0) / AGENT_COUNT).toFixed(2);
-            document.getElementById('statSensitivity').innerText = avgSens;
-
-            // Avg retention: mean months subscribed across all active subscriptions
-            let totalMonths = 0, subCount = 0;
-            agents.forEach(a => {
-                Object.values(a.monthsSubscribed).forEach(m => { totalMonths += m; subCount++; });
-            });
-            document.getElementById('statRetention').innerText = subCount > 0
-                ? (totalMonths / subCount).toFixed(1) + ' mo'
-                : '—';
-
-            const wage = parseFloat(document.getElementById('walletPressure').value);
-            const macro = document.getElementById('statMacro');
-            if (wage < -2) { macro.innerText = 'Distressed'; macro.className = 'text-2xl font-bold mt-1 text-red-500'; }
-            else if (wage > 2) { macro.innerText = 'Booming'; macro.className = 'text-2xl font-bold mt-1 text-green-500'; }
-            else { macro.innerText = 'Stable'; macro.className = 'text-2xl font-bold mt-1 text-yellow-500'; }
-
-            // Distribution bar chart
-            const dist = [0, 0, 0, 0];
-            agents.forEach(a => { dist[Math.min(a.subscriptions.length, 3)]++; });
-            if (distChart) {
-                distChart.data.datasets[0].data = dist;
-                distChart.update('none');
-            }
-
-            // Genre dist
-            renderGenreDist();
-
-            updateMacroDisplay();
-        }
-
-        // --- Agent Detail Modal ---
-        function showAgentDetails(agent) {
-            const modal = document.getElementById('agentModal');
-            const content = document.getElementById('agentContent');
-            const M = getMacroFactor();
-            const subProbs = agent.subscribeProbs(M);
-            const churnData = agent.churnProbs(M);
-
-            content.innerHTML = `
-                <div class="flex items-center space-x-4">
-                    <div class="w-12 h-12 rounded-full border-2 border-netflix-red flex items-center justify-center text-xl font-bold">
-                        ${agent.ageSegment[0]}
-                    </div>
-                    <div>
-                        <h2 class="text-xl font-bold">Consumer #${agent.id}</h2>
-                        <span class="text-sm text-gray-500">${agent.ageSegment} &bull; prefers <b class="text-white">${agent.preference}</b></span>
-                    </div>
+        container.innerHTML += `
+            <div class="bg-black/40 p-3 rounded">
+                <div class="flex items-center gap-2 mb-3">
+                    <div class="w-2 h-2 rounded-full" style="background-color:${s.color}"></div>
+                    <span class="font-bold text-xs">${s.name}</span>
+                    <span class="text-gray-500 text-[10px]">${subs.length} subscribers</span>
                 </div>
-                <div class="grid grid-cols-2 gap-4 text-sm">
-                    <div class="bg-gray-900/50 p-3 rounded">
-                        <label class="text-gray-500 block text-[10px] uppercase">Income Segment</label>
-                        <span class="font-bold">${(agent.incomeSegment * 100).toFixed(0)}th Percentile</span>
-                    </div>
-                    <div class="bg-gray-900/50 p-3 rounded">
-                        <label class="text-gray-500 block text-[10px] uppercase">Price Sensitivity</label>
-                        <span class="font-bold">${agent.priceSensitivity.toFixed(2)}</span>
-                    </div>
-                </div>
-
-                <!-- Active subs + churn risk -->
-                <div>
-                    <h3 class="text-xs font-bold text-gray-400 uppercase mb-2">Active Subscriptions</h3>
-                    <div class="space-y-2">
-                        ${agent.subscriptions.length === 0 ? '<span class="text-gray-600 italic">None</span>' :
-                    churnData.map(cd => `
-                            <div class="p-2 rounded bg-[#222] space-y-1">
-                                <div class="flex items-center justify-between">
-                                    <div class="flex items-center">
-                                        <div class="w-2 h-2 rounded-full mr-2" style="background-color: ${cd.service.color}"></div>
-                                        <span class="text-sm">${cd.service.name}</span>
-                                        <span class="ml-2 text-[10px] text-gray-500">${cd.months} mo</span>
-                                    </div>
-                                    <button onclick="churnAgent(${agent.id}, ${cd.service.id})" class="text-[10px] text-red-500 hover:underline">FORCE CHURN</button>
-                                </div>
-                                <div class="flex items-center gap-2 text-[10px]">
-                                    <span class="text-gray-500">Monthly churn risk:</span>
-                                    <span class="${cd.churnProb >= 0.15 ? 'text-red-400' : cd.churnProb >= 0.05 ? 'text-yellow-400' : 'text-green-400'} font-bold">${(cd.churnProb * 100).toFixed(0)}%</span>
-                                    <span class="text-gray-600">(quality ${cd.service.quality.toFixed(1)}/10)</span>
-                                </div>
-                            </div>`).join('')}
-                    </div>
-                </div>
-
-                <!-- Subscribe probabilities -->
-                <div>
-                    <h3 class="text-xs font-bold text-gray-400 uppercase mb-2">Subscription Probabilities (This Month)</h3>
-                    <div class="space-y-1">
-                        ${subProbs.map(sp => {
-                    if (sp.alreadySub) {
-                        return `<div class="flex items-center justify-between text-[11px] p-1 rounded bg-[#1a1a1a]">
-                                    <div class="flex items-center"><div class="w-2 h-2 rounded-full mr-2" style="background-color:${sp.service.color}"></div>${sp.service.name}</div>
-                                    <span class="text-green-500 text-[10px]">✓ Subscribed</span>
-                                </div>`;
-                    }
-                    const genreMatch = sp.service.genreFocus === agent.preference;
-                    const probPct = (sp.prob * 100).toFixed(1);
-                    return `<div class="flex items-center justify-between text-[11px] p-1 rounded bg-[#111]">
-                                <div class="flex items-center">
-                                    <div class="w-2 h-2 rounded-full mr-2" style="background-color:${sp.service.color}"></div>
-                                    ${sp.service.name}
-                                    ${genreMatch ? '<span class="ml-1 text-yellow-400 text-[9px]">★ genre match</span>' : ''}
-                                </div>
-                                <div class="text-right">
-                                    <span class="font-mono font-bold ${parseFloat(probPct) >= 10 ? 'text-green-400' : 'text-gray-400'}">${probPct}%</span>
-                                    <span class="text-gray-600 ml-1 text-[9px]">U=${sp.utility.toFixed(2)}</span>
-                                </div>
-                            </div>`;
-                }).join('')}
-                    </div>
-                    <p class="text-[10px] text-gray-600 mt-2">Utility U = (Q×0.6 + V×0.4) × f − (P × S × M). Genre match (f=1.3) boosts utility by 30%.</p>
-                </div>
-
-                <div class="pt-4 border-t border-netflix-gray">
-                    <p class="text-[10px] text-gray-500">Manual adjustments let you test interventions on individual agents during pauses.</p>
-                </div>
-            `;
-            modal.classList.remove('hidden');
-        }
-
-        window.churnAgent = (aId, sId) => {
-            const agent = agents.find(a => a.id === aId);
-            if (agent) {
-                agent.subscriptions = agent.subscriptions.filter(id => id !== sId);
-                delete agent.monthsSubscribed[sId];
-                updateDot(document.getElementById(`agent-${aId}`), agent);
-                showAgentDetails(agent);
-                updateStats();
-            }
-        };
-
-        // --- Generic Modal ---
-        window.showModal = (type) => {
-            const modal = document.getElementById('genericModal');
-            const content = document.getElementById('modalContent');
-
-            if (type === 'insights') {
-                content.innerHTML = `
-                    <h2 class="text-2xl font-bold netflix-red">Mathematical Insights</h2>
-                    <p class="text-gray-400 text-sm">Behind the StreamSim Agent-Based Model</p>
-                    <div class="space-y-6">
-
-                        <section class="bg-black/50 p-4 rounded border border-gray-800">
-                            <h3 class="text-lg font-bold mb-2">1. The Utility Function</h3>
-                            <p class="text-sm text-gray-300 mb-2">Each agent scores every service each month:</p>
-                            <div class="font-mono bg-[#111] p-3 rounded text-netflix-red text-center text-sm">
-                                U = (Q × 0.6 + V × 0.4) × f − (P × S × M)
+                <div class="text-[9px] text-gray-500 uppercase mb-1 tracking-wide">Age Groups</div>
+                <div class="space-y-1 mb-3">
+                    ${AGE_SEGMENTS.map(seg => `
+                        <div class="flex items-center gap-2">
+                            <span class="w-14 text-[10px] text-gray-400 truncate">${seg}</span>
+                            <div class="flex-1 bg-gray-800 h-2 rounded overflow-hidden">
+                                <div class="h-2 rounded transition-all" style="width:${maxAge > 0 ? (ageCounts[seg]/maxAge*100).toFixed(0) : 0}%; background-color:${s.color}88"></div>
                             </div>
-                            <ul class="text-[11px] text-gray-500 mt-3 list-disc pl-4 space-y-1">
-                                <li><b>Q</b>: Content Quality (0–10) — drives long-term retention</li>
-                                <li><b>V</b>: Content Volume (0–10) — broadens appeal</li>
-                                <li><b>f</b>: Genre-fit multiplier — <span class="text-yellow-400">1.3×</span> if service genre = agent preference, else 1.0</li>
-                                <li><b>P</b>: Monthly price (USD)</li>
-                                <li><b>S</b>: Agent price sensitivity (high-income → low S)</li>
-                                <li><b>M</b>: Macro multiplier (see below)</li>
-                            </ul>
-                            <div style="height:160px; margin-top: 12px;">
-                                <canvas id="insightUtilityChart"></canvas>
-                            </div>
-                        </section>
-
-                        <section class="bg-black/50 p-4 rounded border border-gray-800">
-                            <h3 class="text-lg font-bold mb-2">2. Macroeconomic Multiplier M</h3>
-                            <div class="font-mono bg-[#111] p-3 rounded text-netflix-red text-center text-sm">
-                                M = 1 + (−WageGrowth × 0.05) + (CPI × 0.02)
-                            </div>
-                            <p class="text-sm text-gray-300 mt-2">Wage growth and CPI each contribute <b>independently</b>. Negative wage growth adds wallet pressure; higher CPI increases price sensitivity. Both terms are additive and both scale agent S before it multiplies price.</p>
-                            <ul class="text-[11px] text-gray-500 mt-2 list-disc pl-4 space-y-1">
-                                <li>Wage = −5%, CPI = 0% → M = 1.25 (severe pressure)</li>
-                                <li>Wage = 0%, CPI = 5% → M = 1.10 (mild pressure from inflation)</li>
-                                <li>Wage = +5%, CPI = 2% → M = 0.79 (real-wage growth offsets price)</li>
-                            </ul>
-                            <div style="height:160px; margin-top: 12px;">
-                                <canvas id="insightMacroChart"></canvas>
-                            </div>
-                        </section>
-
-                        <section class="bg-black/50 p-4 rounded border border-gray-800">
-                            <h3 class="text-lg font-bold mb-2">3. Subscribe Probability</h3>
-                            <p class="text-sm text-gray-300 mb-2">Subscribing is probabilistic. The base probability decays for each additional subscription already held (marginal utility):</p>
-                            <ul class="text-[11px] text-gray-500 list-disc pl-4 space-y-1">
-                                <li>U > 5: <span class="text-green-400">40%</span> base chance &nbsp;|&nbsp; 1st sub: 40% &nbsp;|&nbsp; 2nd: 20% &nbsp;|&nbsp; 3rd: 8%</li>
-                                <li>U 3–5: <span class="text-yellow-400">10%</span> base chance</li>
-                                <li>U < 3: <span class="text-red-400">2%</span> base chance</li>
-                            </ul>
-                            <div style="height:160px; margin-top: 12px;">
-                                <canvas id="insightSubChart"></canvas>
-                            </div>
-                        </section>
-
-                        <section class="bg-black/50 p-4 rounded border border-gray-800">
-                            <h3 class="text-lg font-bold mb-2">4. Retention &amp; Churn</h3>
-                            <p class="text-sm text-gray-300 mb-2">Churn probability is <b>primarily driven by content quality</b>, not price. High-quality services are sticky; low-quality services lose subscribers regardless of price.</p>
-                            <ul class="text-[11px] text-gray-500 list-disc pl-4 space-y-1">
-                                <li>Quality ≥ 7: churn = <span class="text-green-400">1%</span> (very sticky — agents stay even at high price)</li>
-                                <li>Quality 4–7: churn depends on utility (1–15%)</li>
-                                <li>Quality &lt; 4: churn = <span class="text-red-400">35%</span> (agents leave regardless of price)</li>
-                            </ul>
-                            <div style="height:160px; margin-top: 12px;">
-                                <canvas id="insightChurnChart"></canvas>
-                            </div>
-                        </section>
-
-                    </div>
-                `;
-                modal.classList.remove('hidden');
-                // Render insight charts after DOM update
-                requestAnimationFrame(() => renderInsightCharts());
-
-            } else if (type === 'scenarios') {
-                const scenarios = getScenarios();
-                content.innerHTML = `
-                    <h2 class="text-2xl font-bold">Classroom Scenarios</h2>
-                    <p class="text-gray-400 text-sm">Select a pre-configured scenario to reset the simulation with specific parameters. Each is designed to illustrate a distinct economic concept.</p>
-                    <div class="space-y-4 mt-4">
-                        ${scenarios.map((sc, i) => `
-                        <div class="scenario-card p-5 rounded-lg" onclick="loadScenario(${i})">
-                            <div class="flex justify-between items-start mb-2">
-                                <h3 class="font-bold text-base">${sc.title}</h3>
-                                <span class="text-[10px] text-gray-500 border border-gray-700 rounded px-2 py-0.5">${sc.tag}</span>
-                            </div>
-                            <p class="text-sm text-gray-400 mb-3">${sc.description}</p>
-                            <ul class="text-[11px] text-gray-500 list-disc pl-4 space-y-1">
-                                ${sc.highlights.map(h => `<li>${h}</li>`).join('')}
-                            </ul>
-                            <div class="mt-3">
-                                <button class="text-xs bg-netflix-red px-4 py-1 rounded font-bold hover:bg-red-700 transition">Load Scenario →</button>
-                            </div>
+                            <span class="w-6 text-[10px] text-gray-500 text-right">${ageCounts[seg]}</span>
                         </div>`).join('')}
+                </div>
+                <div class="text-[9px] text-gray-500 uppercase mb-1 tracking-wide">Genre Preference</div>
+                <div class="space-y-1">
+                    ${GENRES.map(g => `
+                        <div class="flex items-center gap-2">
+                            <span class="w-14 text-[10px] text-gray-400 truncate">${g}</span>
+                            <div class="flex-1 bg-gray-800 h-2 rounded overflow-hidden">
+                                <div class="h-2 rounded transition-all" style="width:${maxGenre > 0 ? (genreCounts[g]/maxGenre*100).toFixed(0) : 0}%; background-color:${g === s.genreFocus ? s.color : '#555'}"></div>
+                            </div>
+                            <span class="w-6 text-[10px] text-gray-500 text-right">${genreCounts[g]}</span>
+                        </div>`).join('')}
+                </div>
+            </div>`;
+    });
+}
+
+// ── Simulation step ────────────────────────────────────────────────────────
+function step() {
+    if (currentMonth >= MONTHS) {
+        isRunning = false;
+        clearInterval(simInterval);
+        document.getElementById('runBtn').innerText = 'Simulation Finished';
+        return;
+    }
+
+    // Check for scheduled pauses BEFORE advancing
+    const pending = scheduledPauses.find(p => p.month === currentMonth + 1);
+    if (pending) {
+        scheduledPauses = scheduledPauses.filter(p => p !== pending);
+        isRunning = false;
+        clearInterval(simInterval);
+        document.getElementById('runBtn').innerText = 'Resume Simulation';
+        pauseLines.push(currentMonth + 1);
+        if (chart) chart.update('none');
+        showPauseModal(pending);
+        return;
+    }
+
+    currentMonth++;
+    const wageGrowth = parseFloat(document.getElementById('walletPressure').value);
+    const marketCPI = parseFloat(document.getElementById('cpi').value);
+
+    agents.forEach(agent => {
+        agent.evaluate(services, wageGrowth, marketCPI);
+        const dot = document.getElementById(`agent-${agent.id}`);
+        if (dot) styleDot(dot, agent);
+    });
+
+    const counts = {};
+    services.forEach(s => { counts[s.id] = agents.filter(a => a.subscriptions.includes(s.id)).length; });
+    history.push({ month: currentMonth, counts });
+
+    updateUI();
+    updateChart();
+    updateStats();
+    if (currentMonth % 3 === 0) renderServiceProfiles();
+}
+
+function updateUI() {
+    document.getElementById('monthDisplay').innerText = `Month: ${currentMonth} / ${MONTHS}`;
+}
+
+function updateChart() {
+    services.forEach((s, i) => {
+        chart.data.datasets[i].data = [0, ...history.map(h => h.counts[s.id])];
+    });
+    chart.update('none');
+}
+
+function syncSliderLabels() {
+    const w = parseFloat(document.getElementById('walletPressure').value);
+    document.getElementById('walletVal').innerText = (w > 0 ? '+' : '') + w.toFixed(1) + '%';
+    const c = parseFloat(document.getElementById('cpi').value);
+    document.getElementById('cpiVal').innerText = c.toFixed(1) + '%';
+    updateMacroDisplay();
+}
+
+function updateMacroDisplay() {
+    const w = parseFloat(document.getElementById('walletPressure').value);
+    const c = parseFloat(document.getElementById('cpi').value);
+    const wTerm = -w * 0.05;
+    const cTerm = c * 0.02;
+    const M = 1 + wTerm + cTerm;
+    document.getElementById('walletTerm').innerText = (wTerm >= 0 ? '+' : '') + wTerm.toFixed(3);
+    document.getElementById('cpiTerm').innerText = '+' + cTerm.toFixed(3);
+    document.getElementById('macroMVal').innerText = M.toFixed(3);
+}
+
+function updateStats() {
+    const totalSubs = agents.reduce((acc, a) => acc + (a.subscriptions.length > 0 ? 1 : 0), 0);
+    document.getElementById('statSaturation').innerText = (totalSubs / AGENT_COUNT * 100).toFixed(1) + '%';
+    const totalSubCount = agents.reduce((acc, a) => acc + a.subscriptions.length, 0);
+    document.getElementById('statDepth').innerText = (totalSubCount / AGENT_COUNT).toFixed(2);
+    const avgSens = (agents.reduce((acc, a) => acc + a.priceSensitivity, 0) / AGENT_COUNT).toFixed(2);
+    document.getElementById('statSensitivity').innerText = avgSens;
+
+    let totalMonths = 0, subCount = 0;
+    agents.forEach(a => { Object.values(a.monthsSubscribed).forEach(m => { totalMonths += m; subCount++; }); });
+    document.getElementById('statRetention').innerText = subCount > 0 ? (totalMonths / subCount).toFixed(1) + ' mo' : '—';
+
+    const w = parseFloat(document.getElementById('walletPressure').value);
+    const el = document.getElementById('statMacro');
+    if (w < -2) { el.innerText = 'Recession'; el.className = 'text-2xl font-bold mt-1 text-red-500'; }
+    else if (w > 2) { el.innerText = 'Booming'; el.className = 'text-2xl font-bold mt-1 text-green-500'; }
+    else { el.innerText = 'Stable'; el.className = 'text-2xl font-bold mt-1 text-yellow-500'; }
+
+    const dist = [0, 0, 0, 0];
+    agents.forEach(a => { dist[Math.min(a.subscriptions.length, 3)]++; });
+    if (distChart) { distChart.data.datasets[0].data = dist; distChart.update('none'); }
+
+    updateMacroDisplay();
+}
+
+// ── Pause modal ────────────────────────────────────────────────────────────
+function showPauseModal(event) {
+    document.getElementById('pauseModalTitle').innerText = event.title;
+    document.getElementById('pauseModalBody').innerText = event.body;
+    const stepsEl = document.getElementById('pauseModalSteps');
+    stepsEl.innerHTML = event.steps.map((s, i) =>
+        `<div class="flex gap-3"><span class="text-yellow-400 font-bold">${i+1}.</span><span class="text-gray-300">${s}</span></div>`
+    ).join('');
+    document.getElementById('pauseModal').classList.remove('hidden');
+}
+
+function dismissPauseModal() {
+    document.getElementById('pauseModal').classList.add('hidden');
+}
+
+// ── Agent detail modal ─────────────────────────────────────────────────────
+function showAgentDetails(agent) {
+    const modal = document.getElementById('agentModal');
+    const M = getSpendingPressure();
+    const subProbs = agent.subscribeProbs(M);
+    const risks = agent.churnRisks(M);
+
+    document.getElementById('agentContent').innerHTML = `
+        <div class="flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-full border-2 border-netflix-red flex items-center justify-center text-xl font-bold">${agent.ageSegment[0]}</div>
+            <div>
+                <h2 class="text-xl font-bold">Viewer #${agent.id}</h2>
+                <span class="text-sm text-gray-500">${agent.ageSegment} &bull; Likes <b class="text-white">${agent.preference}</b></span>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3 text-sm">
+            <div class="bg-gray-900/50 p-3 rounded">
+                <label class="text-gray-500 block text-[10px] uppercase">Income Level</label>
+                <span class="font-bold">${(agent.incomeSegment * 100).toFixed(0)}th percentile</span>
+            </div>
+            <div class="bg-gray-900/50 p-3 rounded">
+                <label class="text-gray-500 block text-[10px] uppercase">Price Sensitivity</label>
+                <span class="font-bold">${agent.priceSensitivity.toFixed(2)}</span>
+                <span class="text-[10px] text-gray-600 block">${agent.priceSensitivity > 0.8 ? 'Very price-conscious' : agent.priceSensitivity > 0.5 ? 'Moderately price-conscious' : 'Not very price-sensitive'}</span>
+            </div>
+        </div>
+        <div>
+            <h3 class="text-xs font-bold text-gray-400 uppercase mb-2">Current Subscriptions</h3>
+            ${agent.subscriptions.length === 0 ? '<p class="text-gray-600 italic text-sm">Not subscribed to anything</p>' :
+                risks.map(r => `
+                <div class="p-2 rounded bg-[#222] space-y-1 mb-2">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 rounded-full" style="background-color:${r.service.color}"></div>
+                            <span class="text-sm">${r.service.name}</span>
+                            <span class="text-[10px] text-gray-500">${r.months} months</span>
+                        </div>
+                        <button onclick="churnAgent(${agent.id},${r.service.id})" class="text-[10px] text-red-500 hover:underline">Remove</button>
                     </div>
-                    <div class="mt-6 pt-4 border-t border-gray-800 flex justify-between">
-                        <button onclick="document.getElementById('downloadBtn').click()" class="bg-white text-black px-4 py-2 rounded font-bold text-xs">Download Current Data</button>
-                        <button onclick="hideModal()" class="text-gray-500 text-sm">Close</button>
+                    <div class="text-[10px] flex gap-2">
+                        <span class="text-gray-500">Chance of canceling this month:</span>
+                        <span class="${r.churnProb >= 0.15 ? 'text-red-400' : r.churnProb >= 0.05 ? 'text-yellow-400' : 'text-green-400'} font-bold">${(r.churnProb*100).toFixed(0)}%</span>
+                        <span class="text-gray-600">(quality ${r.service.quality.toFixed(1)}/10)</span>
                     </div>
-                `;
-                modal.classList.remove('hidden');
+                </div>`).join('')}
+        </div>
+        <div>
+            <h3 class="text-xs font-bold text-gray-400 uppercase mb-2">Chance of Subscribing (This Month)</h3>
+            ${subProbs.map(sp => {
+                if (sp.alreadySub) return `<div class="flex justify-between text-[11px] p-1 rounded bg-[#1a1a1a] mb-1"><div class="flex items-center gap-2"><div class="w-2 h-2 rounded-full" style="background-color:${sp.service.color}"></div>${sp.service.name}</div><span class="text-green-500">✓ Already subscribed</span></div>`;
+                const pct = (sp.prob * 100).toFixed(1);
+                return `<div class="flex justify-between items-center text-[11px] p-1 rounded bg-[#111] mb-1">
+                    <div class="flex items-center gap-1.5">
+                        <div class="w-2 h-2 rounded-full" style="background-color:${sp.service.color}"></div>
+                        ${sp.service.name}
+                        ${sp.genreMatch ? '<span class="text-yellow-400 text-[9px]">★ genre match</span>' : ''}
+                    </div>
+                    <div class="text-right">
+                        <span class="font-mono font-bold ${parseFloat(pct) >= 10 ? 'text-green-400' : 'text-gray-400'}">${pct}%</span>
+                        <span class="text-gray-600 ml-1 text-[9px]">score: ${sp.utility.toFixed(1)}</span>
+                    </div>
+                </div>`;
+            }).join('')}
+            <p class="text-[10px] text-gray-600 mt-2">Score = (Quality×0.6 + Volume×0.4) × genre-fit − (Price × sensitivity × economy). Genre match gives a 30% score boost.</p>
+        </div>
+        <div class="pt-3 border-t border-gray-800">
+            <p class="text-[10px] text-gray-500">Try removing a subscription or changing service settings to see how this viewer's choices shift.</p>
+        </div>`;
+    modal.classList.remove('hidden');
+}
+
+window.churnAgent = (aId, sId) => {
+    const agent = agents.find(a => a.id === aId);
+    if (!agent) return;
+    agent.subscriptions = agent.subscriptions.filter(id => id !== sId);
+    delete agent.monthsSubscribed[sId];
+    const dot = document.getElementById(`agent-${aId}`);
+    if (dot) styleDot(dot, agent);
+    showAgentDetails(agent);
+    updateStats();
+};
+
+// ── Generic modal ──────────────────────────────────────────────────────────
+window.showModal = type => {
+    const modal = document.getElementById('genericModal');
+    const content = document.getElementById('modalContent');
+
+    if (type === 'insights') {
+        content.innerHTML = `
+            <h2 class="text-2xl font-bold netflix-red">How StreamSim Works</h2>
+            <p class="text-gray-400 text-sm">StreamSim uses a simplified model of consumer behavior. The rules below are <b>model assumptions</b> — they are designed to capture real patterns, but they're simplifications, not economic laws.</p>
+            <div class="bg-yellow-900/30 border border-yellow-800 rounded p-3 text-[11px] text-yellow-300 mb-2">
+                ⚠ Everything on this page describes how the simulation is built — not necessarily how real markets work. Discussing where these rules might break down is part of the learning.
+            </div>
+            <div class="space-y-6">
+
+                <section class="bg-black/50 p-4 rounded border border-gray-800">
+                    <h3 class="text-base font-bold mb-1">1. How viewers score a service <span class="assumption-badge">MODEL ASSUMPTION</span></h3>
+                    <p class="text-sm text-gray-400 mb-3">Every month, each viewer calculates a "value score" for every service. The higher the score, the more likely they are to subscribe — or stay subscribed.</p>
+                    <div class="font-mono bg-[#111] p-3 rounded text-sm text-center mb-3" style="color:#E50914">
+                        Score = (Quality × 0.6 + Volume × 0.4) × GenreFit − (Price × Sensitivity × EconomyFactor)
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-[11px] text-gray-400 mb-3">
+                        <div><b class="text-white">Quality</b> — how good the content is (0–10). Has more weight than volume.</div>
+                        <div><b class="text-white">Volume</b> — how much content is available (0–10). Broader appeal.</div>
+                        <div><b class="text-white">GenreFit</b> — 1.3 if the service's genre matches the viewer's preference, otherwise 1.0</div>
+                        <div><b class="text-white">Sensitivity</b> — how much this person cares about price (high-income = low sensitivity)</div>
+                    </div>
+                    <div style="height:150px;"><canvas id="insightUtilityChart"></canvas></div>
+                    <p class="text-[10px] text-gray-600 mt-2 italic">The chart shows how the score drops as price increases, for a high-quality vs. low-quality service.</p>
+                </section>
+
+                <section class="bg-black/50 p-4 rounded border border-gray-800">
+                    <h3 class="text-base font-bold mb-1">2. Economy Factor <span class="assumption-badge">MODEL ASSUMPTION</span></h3>
+                    <p class="text-sm text-gray-400 mb-2">Two sliders independently shift how price-sensitive viewers become. They are added together to get a single multiplier.</p>
+                    <div class="font-mono bg-[#111] p-3 rounded text-sm text-center mb-3" style="color:#FFCC00">
+                        EconomyFactor = 1 + (−IncomeGrowth × 0.05) + (Inflation × 0.02)
+                    </div>
+                    <div class="text-[11px] text-gray-400 space-y-1 mb-3">
+                        <div>• Income growth of −5% adds <b>+0.25</b> to the factor (people feel poorer → price matters more)</div>
+                        <div>• Inflation of 5% adds <b>+0.10</b> to the factor (prices feel higher → same effect)</div>
+                        <div>• They stack: recession + high inflation creates maximum pressure</div>
+                    </div>
+                    <div style="height:140px;"><canvas id="insightMacroChart"></canvas></div>
+                </section>
+
+                <section class="bg-black/50 p-4 rounded border border-gray-800">
+                    <h3 class="text-base font-bold mb-1">3. Will a viewer subscribe? <span class="assumption-badge">MODEL ASSUMPTION</span></h3>
+                    <p class="text-sm text-gray-400 mb-2">A high score doesn't guarantee a subscription — it only raises the probability. And once someone already has subscriptions, they're less likely to add another one.</p>
+                    <div class="font-mono bg-[#111] p-3 rounded text-sm text-center mb-3" style="color:#0095FF">
+                        P(subscribe) = BaseProbability × StackingDiscount
+                    </div>
+                    <div class="text-[11px] text-gray-400 space-y-1 mb-3">
+                        <div>Base: Score &gt; 5 → 40% &nbsp;|&nbsp; Score 3–5 → 10% &nbsp;|&nbsp; Score &lt; 3 → 2%</div>
+                        <div>Discount: 1st service → ×1.0 &nbsp;|&nbsp; 2nd → ×0.5 &nbsp;|&nbsp; 3rd → ×0.2</div>
+                    </div>
+                    <div style="height:140px;"><canvas id="insightSubChart"></canvas></div>
+                </section>
+
+                <section class="bg-black/50 p-4 rounded border border-gray-800">
+                    <h3 class="text-base font-bold mb-1">4. Will a viewer cancel? <span class="assumption-badge">MODEL ASSUMPTION</span></h3>
+                    <p class="text-sm text-gray-400 mb-2">Cancellation (churn) is mostly driven by content quality, not price. This reflects the idea that people put up with a lot for a show they love — but bail quickly if there's nothing worth watching.</p>
+                    <div class="font-mono bg-[#111] p-3 rounded text-sm text-center mb-3" style="color:#E50914">
+                        P(cancel) = f(Quality)  — price matters less than quality for retention
+                    </div>
+                    <div class="text-[11px] text-gray-400 space-y-1 mb-3">
+                        <div>Quality ≥ 7 → <span class="text-green-400">1%</span> monthly cancel rate (very sticky)</div>
+                        <div>Quality 4–7 → depends on value score (1–15%)</div>
+                        <div>Quality &lt; 4 → <span class="text-red-400">35%</span> monthly cancel rate regardless of price</div>
+                    </div>
+                    <div style="height:140px;"><canvas id="insightChurnChart"></canvas></div>
+                </section>
+            </div>`;
+        modal.classList.remove('hidden');
+        requestAnimationFrame(() => renderInsightCharts());
+
+    } else if (type === 'scenarios') {
+        const scenarios = getScenarios();
+        content.innerHTML = `
+            <h2 class="text-2xl font-bold">Classroom Scenarios</h2>
+            <p class="text-gray-400 text-sm">Each scenario pre-loads specific settings and guides you through a question. Some scenarios automatically pause at key moments.</p>
+            <div class="space-y-4 mt-4">
+                ${scenarios.map((sc, i) => `
+                <div class="scenario-card p-5 rounded-lg" onclick="loadScenario(${i})">
+                    <div class="flex justify-between items-start mb-2">
+                        <h3 class="font-bold text-base">${sc.title}</h3>
+                        <span class="text-[10px] text-gray-500 border border-gray-700 rounded px-2 py-0.5">${sc.tag}</span>
+                    </div>
+                    <p class="text-sm text-gray-400 mb-3">${sc.description}</p>
+                    <ul class="text-[11px] text-gray-500 list-disc pl-4 space-y-1">
+                        ${sc.highlights.map(h => `<li>${h}</li>`).join('')}
+                    </ul>
+                    ${sc.params.pauseEvents?.length ? `<div class="mt-2 text-[10px] text-yellow-500">⏸ Auto-pauses at month ${sc.params.pauseEvents.map(p => p.month).join(', ')} with instructions</div>` : ''}
+                    <div class="mt-3"><button class="text-xs bg-netflix-red px-4 py-1 rounded font-bold hover:bg-red-700 transition">Load →</button></div>
+                </div>`).join('')}
+            </div>
+            <div class="mt-6 pt-4 border-t border-gray-800 flex justify-between">
+                <button onclick="document.getElementById('downloadBtn').click()" class="bg-white text-black px-4 py-2 rounded font-bold text-xs">Download Current Data</button>
+                <button onclick="hideModal()" class="text-gray-500 text-sm">Close</button>
+            </div>`;
+        modal.classList.remove('hidden');
+    }
+};
+
+window.hideModal = () => document.getElementById('genericModal').classList.add('hidden');
+
+window.loadScenario = i => {
+    hideModal();
+    initSim(getScenarios()[i].params);
+};
+
+// ── Scenarios ──────────────────────────────────────────────────────────────
+function getScenarios() {
+    return [
+        {
+            title: 'Scenario A — Price War',
+            tag: 'Competition',
+            description: 'Three services with identical quality compete only on price. Does cheaper always win, or does something else matter?',
+            highlights: [
+                'All services: quality 7, volume 7 — only price differs ($8, $14, $20)',
+                'Stable economy (0% income growth, 2% inflation)',
+                'Watch which service gains market share over 48 months',
+                'Try changing the genre focus of each service mid-run'
+            ],
+            params: {
+                kCount: 3, walletPressure: 0, cpi: 2,
+                services: [
+                    { price: 8,  quality: 7, contentVolume: 7, genreFocus: 'Action' },
+                    { price: 14, quality: 7, contentVolume: 7, genreFocus: 'Drama' },
+                    { price: 20, quality: 7, contentVolume: 7, genreFocus: 'Comedy' }
+                ]
             }
-        };
-
-        window.hideModal = () => {
-            document.getElementById('genericModal').classList.add('hidden');
-        };
-
-        // --- Scenarios ---
-        function getScenarios() {
-            return [
-                {
-                    title: 'Scenario A — Price War',
-                    tag: 'Competition',
-                    description: 'Three comparable services compete on price. Observe how pricing strategy affects market share when quality and volume are similar across providers.',
-                    highlights: [
-                        '3 services with equal content quality (7) and volume (7)',
-                        'Services priced at $8, $14, and $20 respectively',
-                        'Stable macro environment (0% wage growth, 2% CPI)',
-                        'Question: Does the cheapest service always win?'
-                    ],
-                    params: {
-                        kCount: 3,
-                        walletPressure: 0,
-                        cpi: 2,
-                        services: [
-                            { price: 8, quality: 7, contentVolume: 7, genreFocus: 'Action' },
-                            { price: 14, quality: 7, contentVolume: 7, genreFocus: 'Drama' },
-                            { price: 20, quality: 7, contentVolume: 7, genreFocus: 'Comedy' }
-                        ]
-                    }
-                },
-                {
-                    title: 'Scenario B — Macro Shock',
-                    tag: 'Economics',
-                    description: 'Start in a stable economy and observe baseline subscriptions. Then pause, drop wage growth to −5%, and resume. Watch how the macro shock ripples through the population differently across income segments.',
-                    highlights: [
-                        '3 services at varied quality and price points',
-                        'Begin at 0% wage growth — run ~12 months',
-                        'Pause and drop wage growth to −5% to simulate recession',
-                        'Question: Which services lose subscribers first?'
-                    ],
-                    params: {
-                        kCount: 3,
-                        walletPressure: 0,
-                        cpi: 2,
-                        services: [
-                            { price: 8, quality: 6, contentVolume: 8, genreFocus: 'Comedy' },
-                            { price: 15, quality: 8, contentVolume: 6, genreFocus: 'Drama' },
-                            { price: 22, quality: 9, contentVolume: 5, genreFocus: 'Sci-Fi' }
-                        ]
-                    }
-                },
-                {
-                    title: 'Scenario C — Niche vs. Mass Market',
-                    tag: 'Strategy',
-                    description: 'One service targets a niche genre with very high quality content. Another offers broad volume at lower quality. A third takes the middle path. Which strategy reaches higher saturation?',
-                    highlights: [
-                        'NetStream: high quality (9), low volume (3), Sci-Fi niche',
-                        'CineMax: low quality (4), high volume (9), all-genre Drama',
-                        'GlowTV: balanced quality (6) and volume (6), Comedy',
-                        'Question: How does genre distribution in the population affect outcomes?'
-                    ],
-                    params: {
-                        kCount: 3,
-                        walletPressure: 1,
-                        cpi: 2,
-                        services: [
-                            { price: 14, quality: 9, contentVolume: 3, genreFocus: 'Sci-Fi' },
-                            { price: 10, quality: 4, contentVolume: 9, genreFocus: 'Drama' },
-                            { price: 12, quality: 6, contentVolume: 6, genreFocus: 'Comedy' }
-                        ]
-                    }
-                }
-            ];
+        },
+        {
+            title: 'Scenario B — Recession Shock',
+            tag: 'Economics',
+            description: 'Start in a stable economy. The simulation pauses at month 12 and prompts you to simulate a recession. Watch what happens next.',
+            highlights: [
+                'Three services at varied quality and price points',
+                'Auto-pauses at month 12: set income growth to −5%',
+                'Which services survive a recession? Which lose subscribers first?',
+                'Try the same shock on Scenario A to compare results'
+            ],
+            params: {
+                kCount: 3, walletPressure: 0, cpi: 2,
+                services: [
+                    { price: 8,  quality: 6, contentVolume: 8, genreFocus: 'Comedy' },
+                    { price: 15, quality: 8, contentVolume: 6, genreFocus: 'Drama' },
+                    { price: 22, quality: 9, contentVolume: 5, genreFocus: 'Sci-Fi' }
+                ],
+                pauseEvents: [{
+                    month: 12,
+                    title: 'Time to Simulate a Recession',
+                    body: 'The simulation is at month 12. Now you will introduce an economic shock — household incomes are falling. This is your experiment: how does a recession ripple through a streaming market?',
+                    steps: [
+                        'Find the "Economy" panel on the left sidebar',
+                        'Drag "Household Income Growth" all the way to the left (−5%)',
+                        'Watch the chart: which services lose subscribers fastest?',
+                        'Look at the "Who Subscribes" section to see which age groups are most affected'
+                    ]
+                }]
+            }
+        },
+        {
+            title: 'Scenario C — Niche vs. Mass Market',
+            tag: 'Strategy',
+            description: 'One service chases a niche with premium content. Another floods the market with volume. A third takes the middle path. This scenario pauses at month 24 to reflect on what happened.',
+            highlights: [
+                'NetStream: high quality (9), low volume (3), Sci-Fi niche — $14/mo',
+                'CineMax: low quality (4), high volume (9), Drama — $10/mo',
+                'GlowTV: balanced quality (6) and volume (6), Comedy — $12/mo',
+                'Try adjusting the genre mix to see how audience composition changes outcomes'
+            ],
+            params: {
+                kCount: 3, walletPressure: 1, cpi: 2,
+                genreWeights: { Action: 1, Drama: 3, Comedy: 2, Kids: 1, 'Sci-Fi': 1.5 },
+                services: [
+                    { price: 14, quality: 9, contentVolume: 3, genreFocus: 'Sci-Fi' },
+                    { price: 10, quality: 4, contentVolume: 9, genreFocus: 'Drama' },
+                    { price: 12, quality: 6, contentVolume: 6, genreFocus: 'Comedy' }
+                ],
+                pauseEvents: [{
+                    month: 24,
+                    title: 'Halfway Check-In',
+                    body: 'You are at month 24. Take a moment to compare how each strategy is performing before running the second half.',
+                    steps: [
+                        'Look at the subscriber chart — which service is ahead? Is it the one you expected?',
+                        'Check the "Who Subscribes" section for each service — what genres do their fans prefer?',
+                        'Now try increasing the Sci-Fi weight in the Audience Genre Mix and resuming',
+                        'Does the niche service (NetStream) catch up when more viewers prefer its genre?'
+                    ]
+                }]
+            }
         }
+    ];
+}
 
-        window.loadScenario = (i) => {
-            hideModal();
-            const sc = getScenarios()[i];
-            initSim(sc.params);
-        };
+// ── Insight charts ─────────────────────────────────────────────────────────
+function renderInsightCharts() {
+    Object.values(insightCharts).forEach(c => c.destroy());
+    insightCharts = {};
 
-        // --- Insight Charts ---
-        let insightCharts = {};
-        function renderInsightCharts() {
-            Object.values(insightCharts).forEach(c => c.destroy());
-            insightCharts = {};
+    const prices = Array.from({ length: 26 }, (_, i) => i + 5);
+    const uHigh = prices.map(p => (9 * 0.6 + 7 * 0.4) * 1.3 - p * 0.5 * 1.0);
+    const uLow  = prices.map(p => (3 * 0.6 + 3 * 0.4) * 1.0 - p * 0.5 * 1.0);
+    const ctxU = document.getElementById('insightUtilityChart');
+    if (ctxU) insightCharts.u = new Chart(ctxU, { type: 'line', data: { labels: prices, datasets: [
+        { label: 'High quality (9) + genre match', data: uHigh, borderColor: '#22C55E', backgroundColor: 'transparent', tension: 0.3, pointRadius: 0 },
+        { label: 'Low quality (3), no genre match', data: uLow,  borderColor: '#E50914', backgroundColor: 'transparent', tension: 0.3, pointRadius: 0 }
+    ]}, options: chartOpts('Price ($)', 'Value Score') });
 
-            // 1. Utility vs price for two quality levels
-            const prices = Array.from({ length: 26 }, (_, i) => i + 5); // 5..30
-            const uHigh = prices.map(p => (9 * 0.6 + 7 * 0.4) * 1.3 - (p * 0.5 * 1.0));
-            const uLow = prices.map(p => (3 * 0.6 + 3 * 0.4) * 1.0 - (p * 0.5 * 1.0));
-            const ctxU = document.getElementById('insightUtilityChart');
-            if (ctxU) {
-                insightCharts.utility = new Chart(ctxU, {
-                    type: 'line',
-                    data: {
-                        labels: prices,
-                        datasets: [
-                            { label: 'High Q (9) + genre match', data: uHigh, borderColor: '#22C55E', backgroundColor: 'transparent', tension: 0.3, pointRadius: 0 },
-                            { label: 'Low Q (3), no match', data: uLow, borderColor: '#E50914', backgroundColor: 'transparent', tension: 0.3, pointRadius: 0 }
-                        ]
-                    },
-                    options: chartOpts('Price ($)', 'Utility U')
-                });
-            }
+    const wages = Array.from({ length: 21 }, (_, i) => -5 + i * 0.5);
+    const ctxM = document.getElementById('insightMacroChart');
+    if (ctxM) insightCharts.m = new Chart(ctxM, { type: 'line', data: { labels: wages.map(w => w.toFixed(1) + '%'), datasets: [
+        { label: 'Economy Factor (Inflation=2%)', data: wages.map(w => 1 + (-w * 0.05) + 0.04), borderColor: '#FFCC00', backgroundColor: 'transparent', tension: 0.1, pointRadius: 0 }
+    ]}, options: chartOpts('Income Growth', 'Economy Factor') });
 
-            // 2. Macro multiplier M vs wage growth (CPI=2 fixed)
-            const wages = Array.from({ length: 21 }, (_, i) => -5 + i * 0.5);
-            const mVals = wages.map(w => 1 + (-w * 0.05) + (2 * 0.02));
-            const ctxM = document.getElementById('insightMacroChart');
-            if (ctxM) {
-                insightCharts.macro = new Chart(ctxM, {
-                    type: 'line',
-                    data: {
-                        labels: wages.map(w => w.toFixed(1) + '%'),
-                        datasets: [{ label: 'M (CPI=2%)', data: mVals, borderColor: '#FFCC00', backgroundColor: 'transparent', tension: 0.1, pointRadius: 0 }]
-                    },
-                    options: chartOpts('Wage Growth', 'Multiplier M')
-                });
-            }
+    const utils = Array.from({ length: 40 }, (_, i) => -2 + i * 0.3);
+    const ctxS = document.getElementById('insightSubChart');
+    if (ctxS) insightCharts.s = new Chart(ctxS, { type: 'line', data: { labels: utils.map(u => u.toFixed(1)), datasets: [
+        { label: '1st service', data: utils.map(u => u > 5 ? 0.40 : u > 3 ? 0.10 : 0.02), borderColor: '#0095FF', backgroundColor: 'transparent', tension: 0.1, pointRadius: 0 },
+        { label: '2nd service', data: utils.map(u => (u > 5 ? 0.40 : u > 3 ? 0.10 : 0.02) * 0.5), borderColor: '#9333EA', backgroundColor: 'transparent', tension: 0.1, pointRadius: 0 }
+    ]}, options: chartOpts('Value Score', 'Subscribe Probability') });
 
-            // 3. Subscribe probability vs utility
-            const utils = Array.from({ length: 40 }, (_, i) => -2 + i * 0.3);
-            const probFirst = utils.map(u => u > 5 ? 0.40 : u > 3 ? 0.10 : 0.02);
-            const probSecond = utils.map(u => (u > 5 ? 0.40 : u > 3 ? 0.10 : 0.02) * 0.5);
-            const ctxS = document.getElementById('insightSubChart');
-            if (ctxS) {
-                insightCharts.sub = new Chart(ctxS, {
-                    type: 'line',
-                    data: {
-                        labels: utils.map(u => u.toFixed(1)),
-                        datasets: [
-                            { label: '1st sub', data: probFirst, borderColor: '#0095FF', backgroundColor: 'transparent', tension: 0.1, pointRadius: 0 },
-                            { label: '2nd sub', data: probSecond, borderColor: '#9333EA', backgroundColor: 'transparent', tension: 0.1, pointRadius: 0 }
-                        ]
-                    },
-                    options: chartOpts('Utility U', 'P(subscribe)')
-                });
-            }
+    const qualArr = Array.from({ length: 21 }, (_, i) => i * 0.5);
+    const ctxC = document.getElementById('insightChurnChart');
+    if (ctxC) insightCharts.c = new Chart(ctxC, { type: 'line', data: { labels: qualArr.map(q => q.toFixed(1)), datasets: [
+        { label: 'Cancel probability per month', data: qualArr.map(q => q >= 7 ? 0.01 : q >= 4 ? 0.05 : 0.35), borderColor: '#E50914', backgroundColor: '#E5091422', fill: true, tension: 0.1, pointRadius: 0, stepped: true }
+    ]}, options: chartOpts('Content Quality (0–10)', 'Cancel Rate / Month') });
+}
 
-            // 4. Churn probability vs quality
-            const quals = Array.from({ length: 21 }, (_, i) => i * 0.5);
-            const churnVals = quals.map(q => {
-                if (q >= 7) return 0.01;
-                if (q >= 4) return 0.05; // mid-utility assumed
-                return 0.35;
-            });
-            const ctxC = document.getElementById('insightChurnChart');
-            if (ctxC) {
-                insightCharts.churn = new Chart(ctxC, {
-                    type: 'line',
-                    data: {
-                        labels: quals.map(q => q.toFixed(1)),
-                        datasets: [{ label: 'Monthly churn prob', data: churnVals, borderColor: '#E50914', backgroundColor: '#E5091422', fill: true, tension: 0.1, pointRadius: 0 }]
-                    },
-                    options: chartOpts('Content Quality (0–10)', 'P(churn per month)')
-                });
-            }
-        }
+function chartOpts(xLabel, yLabel) {
+    return {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+            x: { grid: { color: '#222' }, ticks: { color: '#666', maxTicksLimit: 8 }, title: { display: true, text: xLabel, color: '#555', font: { size: 10 } } },
+            y: { grid: { color: '#222' }, ticks: { color: '#666' }, title: { display: true, text: yLabel, color: '#555', font: { size: 10 } } }
+        },
+        plugins: { legend: { labels: { color: '#888', boxWidth: 12, font: { size: 10 } } } }
+    };
+}
 
-        function chartOpts(xLabel, yLabel) {
-            return {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    x: { grid: { color: '#222' }, ticks: { color: '#666', maxTicksLimit: 8 }, title: { display: true, text: xLabel, color: '#666', font: { size: 10 } } },
-                    y: { grid: { color: '#222' }, ticks: { color: '#666' }, title: { display: true, text: yLabel, color: '#666', font: { size: 10 } } }
-                },
-                plugins: { legend: { labels: { color: '#888', boxWidth: 12, font: { size: 10 } } } }
-            };
-        }
+// ── Controls ───────────────────────────────────────────────────────────────
+document.getElementById('runBtn').onclick = () => {
+    if (isRunning) {
+        isRunning = false;
+        clearInterval(simInterval);
+        document.getElementById('runBtn').innerText = 'Resume Simulation';
+    } else {
+        isRunning = true;
+        document.getElementById('runBtn').innerText = 'Pause';
+        simInterval = setInterval(step, 200);
+    }
+};
 
-        // --- Controls ---
-        document.getElementById('runBtn').onclick = () => {
-            if (isRunning) {
-                isRunning = false;
-                clearInterval(simInterval);
-                document.getElementById('runBtn').innerText = 'Resume Simulation';
-            } else {
-                isRunning = true;
-                document.getElementById('runBtn').innerText = 'Pause Simulation';
-                simInterval = setInterval(step, 200);
-            }
-        };
+document.getElementById('resetBtn').onclick = () => initSim({ keepParams: true });
+document.getElementById('resetParamsBtn').onclick = () => initSim();
+document.getElementById('kCount').onchange = () => initSim({ keepParams: true });
 
-        document.getElementById('resetBtn').onclick = () => initSim();
+document.getElementById('walletPressure').oninput = e => {
+    document.getElementById('walletVal').innerText = (parseFloat(e.target.value) > 0 ? '+' : '') + parseFloat(e.target.value).toFixed(1) + '%';
+    updateMacroDisplay(); updateStats();
+};
+document.getElementById('cpi').oninput = e => {
+    document.getElementById('cpiVal').innerText = parseFloat(e.target.value).toFixed(1) + '%';
+    updateMacroDisplay(); updateStats();
+};
 
-        document.getElementById('kCount').onchange = () => initSim();
+document.getElementById('closeModal').onclick = () => document.getElementById('agentModal').classList.add('hidden');
 
-        document.getElementById('walletPressure').oninput = e => {
-            document.getElementById('walletVal').innerText = (parseFloat(e.target.value) > 0 ? '+' : '') + e.target.value + '%';
-            updateMacroDisplay();
-            updateStats();
-        };
+document.getElementById('downloadBtn').onclick = () => {
+    let csv = 'Month,' + services.map(s => s.name).join(',') + '\n';
+    history.forEach(h => { csv += h.month + ',' + services.map(s => h.counts[s.id]).join(',') + '\n'; });
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })), download: 'streamsim_results.csv' });
+    a.setAttribute('hidden', '');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+};
 
-        document.getElementById('cpi').oninput = e => {
-            document.getElementById('cpiVal').innerText = parseFloat(e.target.value).toFixed(1) + '%';
-            updateMacroDisplay();
-            updateStats();
-        };
-
-        document.getElementById('closeModal').onclick = () => {
-            document.getElementById('agentModal').classList.add('hidden');
-        };
-
-        document.getElementById('downloadBtn').onclick = () => {
-            let csv = 'Month,' + services.map(s => s.name).join(',') + '\n';
-            history.forEach(h => {
-                csv += h.month + ',' + services.map(s => h.counts[s.id]).join(',') + '\n';
-            });
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.setAttribute('hidden', '');
-            a.setAttribute('href', url);
-            a.setAttribute('download', 'streamsim_results.csv');
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        };
-
-        // Initialize on load
-        initSim();
-    </script>
+// ── Boot ───────────────────────────────────────────────────────────────────
+initSim();
+</script>
 </body>
 </html>
