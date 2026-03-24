@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StreamSim - Streaming Market ABM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #000;
+            color: #fff;
+        }
+
+        .netflix-red {
+            color: #E50914;
+        }
+
+        .bg-netflix-red {
+            background-color: #E50914;
+        }
+
+        .bg-netflix-dark {
+            background-color: #141414;
+        }
+
+        .border-netflix-gray {
+            border-color: #333;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #141414;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 4px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #444;
+        }
+
+        .agent-grid {
+            display: grid;
+            grid-template-columns: repeat(40, 1fr);
+            gap: 2px;
+        }
+
+        .agent-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        .agent-dot:hover {
+            transform: scale(1.5);
+            z-index: 10;
+        }
+
+        .service-card {
+            background-color: #181818;
+            border: 1px solid #333;
+            transition: all 0.2s;
+        }
+
+        .service-card:hover {
+            border-color: #E50914;
+        }
+    </style>
+</head>
+
+<body class="bg-black text-white antialiased custom-scrollbar">
+    <div id="app" class="min-h-screen flex flex-col">
+        <!-- Navigation -->
+        <nav
+            class="bg-black border-b border-netflix-gray px-6 py-4 flex justify-between items-center sticky top-0 z-50">
+            <div class="flex items-center space-x-8">
+                <h1 class="text-2xl font-bold netflix-red tracking-tighter uppercase italic cursor-pointer"
+                    onclick="location.reload()">StreamSim</h1>
+                <div class="hidden md:flex space-x-4 text-sm font-medium text-gray-400">
+                    <span class="text-white cursor-pointer">Dashboard</span>
+                    <span class="hover:text-white cursor-pointer" onclick="showModal('insights')">Insights</span>
+                    <span class="hover:text-white cursor-pointer" onclick="showModal('resources')">Resources</span>
+                </div>
+            </div>
+            <div class="flex items-center space-x-6 text-sm">
+                <div id="monthDisplay" class="font-mono text-gray-400">Month: 0 / 48</div>
+                <button id="runBtn" class="bg-netflix-red px-6 py-2 rounded font-bold hover:bg-red-700 transition">Run
+                    Simulation</button>
+                <button id="resetBtn"
+                    class="border border-gray-600 px-4 py-2 rounded font-bold hover:bg-gray-800 transition">Reset</button>
+                <button id="downloadBtn" class="text-gray-400 hover:text-white transition" title="Download CSV">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                    </svg>
+                </button>
+            </div>
+        </nav>
+
+        <main class="flex-1 p-6 grid grid-cols-12 gap-6 overflow-hidden">
+            <!-- Sidebar / Settings -->
+            <div class="col-span-12 lg:col-span-3 space-y-6 overflow-y-auto custom-scrollbar pr-2"
+                style="max-height: calc(100vh - 120px);">
+                <!-- Macro Parameters -->
+                <section class="bg-netflix-dark p-5 rounded-lg border border-netflix-gray">
+                    <h2 class="text-lg font-bold mb-4 flex items-center">
+                        <svg class="w-5 h-5 mr-2 netflix-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                        </svg>
+                        Global Market
+                    </h2>
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <label class="text-gray-400">Real Wage Growth (Macro)</label>
+                                <span id="walletVal" class="text-white">0%</span>
+                            </div>
+                            <input type="range" id="walletPressure" min="-5" max="5" step="0.1" value="0"
+                                class="w-full accent-red-600">
+                            <div class="flex justify-between text-[10px] text-gray-600 mt-1">
+                                <span>High Pressure</span>
+                                <span>Growth Mode</span>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <label class="text-gray-400">Market Price Sensitivity (CPI)</label>
+                                <span id="cpiVal" class="text-white">2.0%</span>
+                            </div>
+                            <input type="range" id="cpi" min="0" max="10" step="0.1" value="2.0"
+                                class="w-full accent-red-600">
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Service Controls -->
+                <section class="space-y-4">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-lg font-bold">Services</h2>
+                        <select id="kCount"
+                            class="bg-netflix-dark text-xs border border-netflix-gray rounded px-2 py-1 outline-none">
+                            <option value="2">2 Services</option>
+                            <option value="3" selected>3 Services</option>
+                            <option value="4">4 Services</option>
+                            <option value="5">5 Services</option>
+                        </select>
+                    </div>
+                    <div id="servicesList" class="space-y-4">
+                        <!-- Dynamic Service Cards -->
+                    </div>
+                </section>
+            </div>
+
+            <!-- Visualization Main Area -->
+            <div class="col-span-12 lg:col-span-9 space-y-6 flex flex-col overflow-y-auto custom-scrollbar"
+                style="max-height: calc(100vh - 120px);">
+                <!-- Top Dashboard -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray flex flex-col justify-center">
+                        <span class="text-xs text-gray-400 uppercase tracking-widest">Market Saturation</span>
+                        <div id="statSaturation" class="text-2xl font-bold mt-1">0%</div>
+                    </div>
+                    <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray flex flex-col justify-center">
+                        <span class="text-xs text-gray-400 uppercase tracking-widest">Avg. Subs per User</span>
+                        <div id="statDepth" class="text-2xl font-bold mt-1">0.0</div>
+                    </div>
+                    <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray flex flex-col justify-center">
+                        <span class="text-xs text-gray-400 uppercase tracking-widest">Avg. Price Sensitivity</span>
+                        <div id="statSensitivity" class="text-2xl font-bold mt-1">0.45</div>
+                    </div>
+                    <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray flex flex-col justify-center">
+                        <span class="text-xs text-gray-400 uppercase tracking-widest">Macro Health</span>
+                        <div id="statMacro" class="text-2xl font-bold mt-1 text-green-500">Stable</div>
+                    </div>
+                </div>
+
+                <!-- Chart -->
+                <div class="bg-netflix-dark p-6 rounded-lg border border-netflix-gray h-80">
+                    <canvas id="mainChart"></canvas>
+                </div>
+
+                <!-- Subscription Distribution -->
+                <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray">
+                    <h3 class="text-xs font-bold mb-3 text-gray-400 uppercase tracking-widest">Subscription Distribution
+                    </h3>
+                    <div class="flex h-4 rounded overflow-hidden">
+                        <div id="dist0" class="bg-gray-800 transition-all duration-300" style="width: 100%"></div>
+                        <div id="dist1" class="transition-all duration-300" style="width: 0%; background-color: #444">
+                        </div>
+                        <div id="dist2" class="transition-all duration-300" style="width: 0%; background-color: #666">
+                        </div>
+                        <div id="dist3" class="transition-all duration-300" style="width: 0%; background-color: #888">
+                        </div>
+                    </div>
+                    <div class="flex justify-between text-[10px] text-gray-500 mt-2">
+                        <span>0 Services</span>
+                        <span>1 Service</span>
+                        <span>2 Services</span>
+                        <span>3+ Services</span>
+                    </div>
+                </div>
+
+                <!-- Population Grid -->
+                <div class="bg-netflix-dark p-6 rounded-lg border border-netflix-gray">
+                    <h3 class="text-sm font-bold mb-4 text-gray-400 uppercase tracking-widest">Consumer Population
+                        (N=1,000)</h3>
+                    <div id="agentGrid" class="agent-grid">
+                        <!-- Agent dots injected here -->
+                    </div>
+                    <div class="mt-4 flex flex-wrap gap-4 text-xs text-gray-400">
+                        <div class="flex items-center">
+                            <div class="w-3 h-3 rounded-full bg-gray-700 mr-2"></div> Unsubscribed
+                        </div>
+                        <div id="legendItems" class="flex flex-wrap gap-4"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Insights/Resources Modals -->
+        <div id="genericModal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[100] hidden">
+            <div
+                class="bg-netflix-dark border border-netflix-gray p-8 rounded-xl max-w-2xl w-full relative max-h-[80vh] overflow-y-auto custom-scrollbar">
+                <button onclick="hideModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                        </path>
+                    </svg>
+                </button>
+                <div id="modalContent" class="space-y-6">
+                    <!-- Dynamic Content -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Agent Detail Modal -->
+        <div id="agentModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] hidden">
+            <div class="bg-netflix-dark border border-netflix-gray p-8 rounded-xl max-w-md w-full relative">
+                <button id="closeModal" class="absolute top-4 right-4 text-gray-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                        </path>
+                    </svg>
+                </button>
+                <div id="agentContent" class="space-y-6">
+                    <!-- Agent data -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Constants & Config ---
+        const AGENT_COUNT = 1000;
+        const MONTHS = 48;
+        const AGE_SEGMENTS = ['Gen Z', 'Millennial', 'Gen X', 'Boomer'];
+        const GENRES = ['Action', 'Drama', 'Comedy', 'Kids', 'Sci-Fi'];
+        const SERVICE_COLORS = ['#E50914', '#0095FF', '#22C55E', '#FFCC00', '#9333EA'];
+
+        // --- Simulation State ---
+        let agents = [];
+        let services = [];
+        let currentMonth = 0;
+        let isRunning = false;
+        let simInterval = null;
+        let chart = null;
+        let history = []; // [{month, counts: {serviceId: count}}]
+
+        // --- Core Classes ---
+        class Agent {
+            constructor(id) {
+                this.id = id;
+                this.incomeSegment = Math.random(); // 0 to 1
+                this.ageSegment = AGE_SEGMENTS[Math.floor(Math.random() * AGE_SEGMENTS.length)];
+                this.preference = GENRES[Math.floor(Math.random() * GENRES.length)];
+
+                // Correlation: High income -> Low price sensitivity
+                this.priceSensitivity = Math.max(0.1, (1.1 - this.incomeSegment) + (Math.random() * 0.2 - 0.1));
+
+                this.subscriptions = []; // Array of service IDs
+                this.history = [];
+            }
+
+            evaluate(services, wageGrowth, marketCPI) {
+                // Wallet Pressure is inverted: -5% growth = +0.05 pressure
+                const walletPressure = -wageGrowth * 0.05;
+                const macroFactor = 1 + walletPressure + (marketCPI * 0.02);
+
+                let bestService = null;
+                let maxUtility = -Infinity;
+
+                services.forEach(s => {
+                    const prefFit = s.contentVolume > 0 && s.genreFocus === this.preference ? 1.3 : 1.0;
+                    const utility = (s.quality * 0.6 + s.contentVolume * 0.4) * prefFit
+                        - (s.price * this.priceSensitivity * macroFactor);
+
+                    if (utility > maxUtility) {
+                        maxUtility = utility;
+                        bestService = s;
+                    }
+                });
+
+                // Decision Logic
+                // 1. Churn?
+                this.subscriptions = this.subscriptions.filter(sid => {
+                    const s = services.find(sv => sv.id === sid);
+                    if (!s) return false;
+                    const prefFit = s.genreFocus === this.preference ? 1.3 : 1.0;
+                    const currentU = (s.quality * 0.6 + s.contentVolume * 0.4) * prefFit
+                        - (s.price * this.priceSensitivity * macroFactor);
+
+                    // Probabilistic churn if utility is low
+                    const churnProb = currentU < 2 ? 0.3 : (currentU < 4 ? 0.05 : 0.01);
+                    return Math.random() > churnProb;
+                });
+
+                // 2. Subscribe? (Agents can subscribe up to 3 services)
+                if (this.subscriptions.length < 3 && bestService && !this.subscriptions.includes(bestService.id)) {
+                    const prefFit = bestService.genreFocus === this.preference ? 1.3 : 1.0;
+                    const topU = (bestService.quality * 0.6 + bestService.contentVolume * 0.4) * prefFit
+                        - (bestService.price * this.priceSensitivity * macroFactor);
+
+                    // Marginal utility of an additional subscription is lower
+                    const subMultiplier = this.subscriptions.length === 0 ? 1.0 : (this.subscriptions.length === 1 ? 0.5 : 0.2);
+
+                    const subProb = (topU > 5 ? 0.4 : (topU > 3 ? 0.1 : 0.02)) * subMultiplier;
+                    if (Math.random() < subProb) {
+                        this.subscriptions.push(bestService.id);
+                    }
+                }
+            }
+        }
+
+        class Service {
+            constructor(id, name, color) {
+                this.id = id;
+                this.name = name;
+                this.color = color;
+                this.price = 10 + Math.random() * 10;
+                this.quality = 5 + Math.random() * 5;
+                this.contentVolume = 5 + Math.random() * 5;
+                this.genreFocus = GENRES[Math.floor(Math.random() * GENRES.length)];
+            }
+        }
+
+        // --- Initialization ---
+        function initSim() {
+            agents = Array.from({ length: AGENT_COUNT }, (_, i) => new Agent(i));
+            const k = parseInt(document.getElementById('kCount').value);
+            services = [];
+            const names = ['NetStream', 'CineMax', 'GlowTV', 'EdgeVideo', 'PrimeWatch'];
+            for (let i = 0; i < k; i++) {
+                services.push(new Service(i, names[i], SERVICE_COLORS[i]));
+            }
+            currentMonth = 0;
+            history = [];
+            isRunning = false;
+            if (simInterval) clearInterval(simInterval);
+
+            renderServices();
+            updateStats();
+            initChart();
+            renderGrid();
+            updateUI();
+        }
+
+        // --- UI Rendering ---
+        function renderServices() {
+            const list = document.getElementById('servicesList');
+            list.innerHTML = '';
+            services.forEach(s => {
+                const card = document.createElement('div');
+                card.className = 'service-card p-4 rounded-lg space-y-3';
+                card.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-3 h-3 rounded-full" style="background-color: ${s.color}"></div>
+                            <h3 class="font-bold text-sm">${s.name}</h3>
+                        </div>
+                        <select data-id="${s.id}" data-prop="genreFocus" class="bg-[#111] text-[9px] border border-gray-700 rounded px-1 outline-none text-gray-300">
+                            ${GENRES.map(g => `<option value="${g}" ${s.genreFocus === g ? 'selected' : ''}>${g}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="space-y-2">
+                        <div>
+                            <div class="flex justify-between text-[10px] mb-1">
+                                <label class="text-gray-500 uppercase">Price ($)</label>
+                                <span class="text-white">$${s.price.toFixed(2)}</span>
+                            </div>
+                            <input type="range" data-id="${s.id}" data-prop="price" min="5" max="30" value="${s.price}" class="w-full accent-red-600">
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-[10px] mb-1">
+                                <label class="text-gray-500 uppercase">Quality</label>
+                                <span class="text-white">${s.quality.toFixed(1)}</span>
+                            </div>
+                            <input type="range" data-id="${s.id}" data-prop="quality" min="0" max="10" step="0.1" value="${s.quality}" class="w-full accent-red-600">
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-[10px] mb-1">
+                                <label class="text-gray-500 uppercase">Volume</label>
+                                <span class="text-white">${s.contentVolume.toFixed(1)}</span>
+                            </div>
+                            <input type="range" data-id="${s.id}" data-prop="contentVolume" min="0" max="10" step="0.1" value="${s.contentVolume}" class="w-full accent-red-600">
+                        </div>
+                    </div>
+                `;
+                list.appendChild(card);
+            });
+
+            // Refresh legend
+            const legend = document.getElementById('legendItems');
+            legend.innerHTML = services.map(s => `
+                <div class="flex items-center"><div class="w-3 h-3 rounded-full mr-2" style="background-color: ${s.color}"></div> ${s.name}</div>
+            `).join('');
+
+            // Add events to inputs
+            list.querySelectorAll('input, select').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const id = parseInt(e.target.dataset.id);
+                    const prop = e.target.dataset.prop;
+                    const service = services.find(sv => sv.id === id);
+                    if (service) {
+                        const val = e.target.tagName === 'SELECT' ? e.target.value : parseFloat(e.target.value);
+                        service[prop] = val;
+                        if (e.target.tagName === 'INPUT') {
+                            e.target.previousElementSibling.querySelector('span').innerText =
+                                prop === 'price' ? '$' + val.toFixed(2) : val.toFixed(1);
+                        }
+                    }
+                });
+            });
+        }
+
+        function renderGrid() {
+            const grid = document.getElementById('agentGrid');
+            grid.innerHTML = '';
+            agents.forEach(agent => {
+                const dot = document.createElement('div');
+                dot.className = 'agent-dot';
+                dot.id = `agent-${agent.id}`;
+                updateDot(dot, agent);
+                dot.onclick = () => showAgentDetails(agent);
+                grid.appendChild(dot);
+            });
+        }
+
+        function updateDot(dot, agent) {
+            if (agent.subscriptions.length === 0) {
+                dot.style.backgroundColor = '#333';
+            } else {
+                // Primary service (first one they joined)
+                const sId = agent.subscriptions[0];
+                const s = services.find(sv => sv.id === sId);
+                dot.style.backgroundColor = s ? s.color : '#333';
+                if (agent.subscriptions.length > 1) {
+                    dot.style.boxShadow = `0 0 4px white`;
+                } else {
+                    dot.style.boxShadow = 'none';
+                }
+            }
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            if (chart) chart.destroy();
+
+            const datasets = services.map(s => ({
+                label: s.name,
+                data: [],
+                borderColor: s.color,
+                backgroundColor: s.color + '22',
+                fill: true,
+                tension: 0.4
+            }));
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({ length: MONTHS + 1 }, (_, i) => i),
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 1000,
+                            grid: { color: '#222' },
+                            ticks: { color: '#666' }
+                        },
+                        x: {
+                            grid: { color: '#222' },
+                            ticks: { color: '#666' }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        // --- Logic ---
+        function step() {
+            if (currentMonth >= MONTHS) {
+                isRunning = false;
+                clearInterval(simInterval);
+                document.getElementById('runBtn').innerText = 'Simulation Finished';
+                return;
+            }
+
+            currentMonth++;
+            const wageGrowth = parseFloat(document.getElementById('walletPressure').value);
+            const marketCPI = parseFloat(document.getElementById('cpi').value);
+
+            // Agents choose
+            agents.forEach(agent => {
+                agent.evaluate(services, wageGrowth, marketCPI);
+                const dot = document.getElementById(`agent-${agent.id}`);
+                if (dot) updateDot(dot, agent);
+            });
+
+            // Recording
+            const counts = {};
+            services.forEach(s => {
+                counts[s.id] = agents.filter(a => a.subscriptions.includes(s.id)).length;
+            });
+            history.push({ month: currentMonth, counts });
+
+            updateUI();
+            updateChart();
+            updateStats();
+        }
+
+        function updateUI() {
+            document.getElementById('monthDisplay').innerText = `Month: ${currentMonth} / ${MONTHS}`;
+        }
+
+        function updateChart() {
+            services.forEach((s, i) => {
+                const data = history.map(h => h.counts[s.id]);
+                // Add 0 for month 0
+                chart.data.datasets[i].data = [0, ...data];
+            });
+            chart.update('none');
+        }
+
+        function updateStats() {
+            const totalSubs = agents.reduce((acc, a) => acc + (a.subscriptions.length > 0 ? 1 : 0), 0);
+            const saturation = (totalSubs / AGENT_COUNT * 100).toFixed(1);
+            document.getElementById('statSaturation').innerText = saturation + '%';
+
+            const totalSubCount = agents.reduce((acc, a) => acc + a.subscriptions.length, 0);
+            const avgDepth = (totalSubCount / AGENT_COUNT).toFixed(1);
+            document.getElementById('statDepth').innerText = avgDepth;
+
+            const avgSens = (agents.reduce((acc, a) => acc + a.priceSensitivity, 0) / AGENT_COUNT).toFixed(2);
+            document.getElementById('statSensitivity').innerText = avgSens;
+
+            const wage = parseFloat(document.getElementById('walletPressure').value);
+            const macro = document.getElementById('statMacro');
+            if (wage < -2) { macro.innerText = 'Distressed'; macro.className = 'text-2xl font-bold mt-1 text-red-500'; }
+            else if (wage > 2) { macro.innerText = 'Booming'; macro.className = 'text-2xl font-bold mt-1 text-green-500'; }
+            else { macro.innerText = 'Stable'; macro.className = 'text-2xl font-bold mt-1 text-yellow-500'; }
+
+            // Distribution bar
+            const dist = [0, 0, 0, 0]; // 0, 1, 2, 3+
+            agents.forEach(a => {
+                const count = Math.min(a.subscriptions.length, 3);
+                dist[count]++;
+            });
+            for (let i = 0; i < 4; i++) {
+                document.getElementById(`dist${i}`).style.width = (dist[i] / AGENT_COUNT * 100) + '%';
+            }
+        }
+
+        function showAgentDetails(agent) {
+            const modal = document.getElementById('agentModal');
+            const content = document.getElementById('agentContent');
+            content.innerHTML = `
+                <div class="flex items-center space-x-4">
+                    <div class="w-12 h-12 rounded-full border-2 border-netflix-red flex items-center justify-center text-xl font-bold">
+                        ${agent.ageSegment[0]}
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold">Consumer #${agent.id}</h2>
+                        <span class="text-sm text-gray-500">${agent.ageSegment} &bull; ${agent.preference} fan</span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4 text-sm">
+                    <div class="bg-gray-900/50 p-3 rounded">
+                        <label class="text-gray-500 block text-[10px] uppercase">Income Segment</label>
+                        <span class="font-bold">${(agent.incomeSegment * 100).toFixed(0)}th Percentile</span>
+                    </div>
+                    <div class="bg-gray-900/50 p-3 rounded">
+                        <label class="text-gray-500 block text-[10px] uppercase">Price Sensitivity</label>
+                        <span class="font-bold">${agent.priceSensitivity.toFixed(2)}</span>
+                    </div>
+                </div>
+                <div>
+                    <h3 class="text-xs font-bold text-gray-400 uppercase mb-2">Active Subscriptions</h3>
+                    <div class="space-y-2">
+                        ${agent.subscriptions.length === 0 ? '<span class="text-gray-600 italic">None</span>' :
+                    agent.subscriptions.map(sid => {
+                        const s = services.find(sv => sv.id === sid);
+                        return `<div class="flex items-center justify-between p-2 rounded bg-[#222]">
+                                <div class="flex items-center"><div class="w-2 h-2 rounded-full mr-2" style="background-color: ${s.color}"></div> ${s.name}</div>
+                                <button onclick="churnAgent(${agent.id}, ${s.id})" class="text-[10px] text-red-500 hover:underline">FORCE CHURN</button>
+                              </div>`;
+                    }).join('')}
+                    </div>
+                </div>
+                <div class="pt-4 border-t border-netflix-gray">
+                    <p class="text-[10px] text-gray-500">Manual adjustments allow students to test 'interventions' on individual agents during pauses.</p>
+                </div>
+            `;
+            modal.classList.remove('hidden');
+        }
+
+        // --- New Modals ---
+        window.showModal = (type) => {
+            const modal = document.getElementById('genericModal');
+            const content = document.getElementById('modalContent');
+            if (type === 'insights') {
+                content.innerHTML = `
+                    <h2 class="text-2xl font-bold netflix-red">Mathematical Insights</h2>
+                    <p class="text-gray-400 text-sm">Behind the StreamSim Agent-Based Model</p>
+                    <div class="space-y-6">
+                        <section class="bg-black/50 p-4 rounded border border-gray-800">
+                            <h3 class="text-lg font-bold mb-2">1. The Utility Function</h3>
+                            <p class="text-sm text-gray-300 mb-3">Each agent calculates the perceived value (Utility) of a service every month:</p>
+                            <div class="font-mono bg-[#111] p-3 rounded text-netflix-red text-center">
+                                U = (Q * 0.6 + V * 0.4) * f - (P * S * M)
+                            </div>
+                            <ul class="text-[11px] text-gray-500 mt-3 list-disc pl-4 space-y-1">
+                                <li><b>Q, V</b>: Quality and Content Volume (0-10)</li>
+                                <li><b>f</b>: Preference Fit (1.3 if genre matches, 1.0 otherwise)</li>
+                                <li><b>P</b>: Monthly Price in USD</li>
+                                <li><b>S</b>: Individual Price Sensitivity (Correlated with Income)</li>
+                                <li><b>M</b>: Macro Multiplier (Calculated from Wage Growth & CPI)</li>
+                            </ul>
+                        </section>
+                        <section class="bg-black/50 p-4 rounded border border-gray-800">
+                            <h3 class="text-lg font-bold mb-2">2. Macroeconomic Multiplier</h3>
+                            <div class="font-mono bg-[#111] p-3 rounded text-netflix-red text-center">
+                                M = 1 + (-WageGrowth * 0.05) + (CPI * 0.02)
+                            </div>
+                            <p class="text-sm text-gray-300 mt-2 italic">Negative wage growth increases "wallet pressure", making consumers more sensitive to price.</p>
+                        </section>
+                        <section class="bg-black/50 p-4 rounded border border-gray-800">
+                            <h3 class="text-lg font-bold mb-2">3. Probabilistic Transitions</h3>
+                            <p class="text-sm text-gray-300">Decisions are not deterministic. We use a stochastic approach:</p>
+                            <ul class="text-[11px] text-gray-500 mt-2 list-disc pl-4">
+                                <li>If <b>U > 5</b>: 40% chance of subscribing</li>
+                                <li>If <b>U < 2</b>: high probability of churn</li>
+                                <li>Marginal utility of secondary/tertiary subscriptions decays by 50-80%</li>
+                            </ul>
+                        </section>
+                    </div>
+                `;
+            } else {
+                content.innerHTML = `
+                    <h2 class="text-2xl font-bold">Classroom Resources</h2>
+                    <p class="text-gray-400 text-sm">Activities for AP Statistics & Economics</p>
+                    <div class="space-y-4 text-sm text-gray-300">
+                        <div class="border-l-2 border-netflix-red pl-4">
+                            <h3 class="font-bold">Topic 1: Correlation & Causality</h3>
+                            <p>Examine how Income Percentile (Independent Variable) correlates with Price Sensitivity (Dependent Variable). Use the Exported CSV to plot this in R or Excel.</p>
+                        </div>
+                        <div class="border-l-2 border-netflix-red pl-4">
+                            <h3 class="font-bold">Topic 2: Macro Impacts</h3>
+                            <p>Run the simulation for 24 months at "Stable" macro health. Then, drop Real Wage Growth to -5% and observe the change in Average Churn Rate.</p>
+                        </div>
+                        <div class="border-l-2 border-netflix-red pl-4">
+                            <h3 class="font-bold">Topic 3: Competitive Analysis</h3>
+                            <p>Set up a "High Quality / High Price" service vs a "High Volume / Low Price" service. Which strategy reaches higher market saturation over 48 months?</p>
+                        </div>
+                    </div>
+                    <div class="mt-8 pt-4 border-t border-gray-800 flex justify-between">
+                        <button onclick="document.getElementById('downloadBtn').click()" class="bg-white text-black px-4 py-2 rounded font-bold text-xs">Download Current Data</button>
+                        <button onclick="hideModal()" class="text-gray-500">Close</button>
+                    </div>
+                `;
+            }
+            modal.classList.remove('hidden');
+        };
+
+        window.hideModal = () => {
+            document.getElementById('genericModal').classList.add('hidden');
+        };
+
+        function showAgentDetails(agent) {
+            const modal = document.getElementById('agentModal');
+            const content = document.getElementById('agentContent');
+            content.innerHTML = `
+                <div class="flex items-center space-x-4">
+                    <div class="w-12 h-12 rounded-full border-2 border-netflix-red flex items-center justify-center text-xl font-bold">
+                        ${agent.ageSegment[0]}
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold">Consumer #${agent.id}</h2>
+                        <span class="text-sm text-gray-500">${agent.ageSegment} &bull; ${agent.preference} fan</span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4 text-sm">
+                    <div class="bg-gray-900/50 p-3 rounded">
+                        <label class="text-gray-500 block text-[10px] uppercase">Income Segment</label>
+                        <span class="font-bold">${(agent.incomeSegment * 100).toFixed(0)}th Percentile</span>
+                    </div>
+                    <div class="bg-gray-900/50 p-3 rounded">
+                        <label class="text-gray-500 block text-[10px] uppercase">Price Sensitivity</label>
+                        <span class="font-bold">${agent.priceSensitivity.toFixed(2)}</span>
+                    </div>
+                </div>
+                <div>
+                    <h3 class="text-xs font-bold text-gray-400 uppercase mb-2">Active Subscriptions</h3>
+                    <div class="space-y-2">
+                        ${agent.subscriptions.length === 0 ? '<span class="text-gray-600 italic">None</span>' :
+                    agent.subscriptions.map(sid => {
+                        const s = services.find(sv => sv.id === sid);
+                        return `<div class="flex items-center justify-between p-2 rounded bg-[#222]">
+                                <div class="flex items-center"><div class="w-2 h-2 rounded-full mr-2" style="background-color: ${s.color}"></div> ${s.name}</div>
+                                <button onclick="churnAgent(${agent.id}, ${s.id})" class="text-[10px] text-red-500 hover:underline">FORCE CHURN</button>
+                              </div>`;
+                    }).join('')}
+                    </div>
+                </div>
+                <div class="pt-4 border-t border-netflix-gray">
+                    <p class="text-[10px] text-gray-500">Manual adjustments allow students to test 'interventions' on individual agents during pauses.</p>
+                </div>
+            `;
+            modal.classList.remove('hidden');
+        }
+
+        window.churnAgent = (aId, sId) => {
+            const agent = agents.find(a => a.id === aId);
+            if (agent) {
+                agent.subscriptions = agent.subscriptions.filter(id => id !== sId);
+                updateDot(document.getElementById(`agent-${aId}`), agent);
+                showAgentDetails(agent);
+                updateStats();
+            }
+        };
+
+        // --- Controls ---
+        document.getElementById('runBtn').onclick = () => {
+            if (isRunning) {
+                isRunning = false;
+                clearInterval(simInterval);
+                document.getElementById('runBtn').innerText = 'Resume Simulation';
+            } else {
+                isRunning = true;
+                document.getElementById('runBtn').innerText = 'Pause Simulation';
+                simInterval = setInterval(step, 200);
+            }
+        };
+
+        document.getElementById('resetBtn').onclick = initSim;
+
+        document.getElementById('kCount').onchange = initSim;
+
+        document.getElementById('walletPressure').oninput = (e) => {
+            document.getElementById('walletVal').innerText = (parseFloat(e.target.value) > 0 ? '+' : '') + e.target.value + '%';
+            updateStats();
+        };
+
+        document.getElementById('cpi').oninput = (e) => {
+            document.getElementById('cpiVal').innerText = e.target.value + '%';
+            updateStats();
+        };
+
+        document.getElementById('closeModal').onclick = () => {
+            document.getElementById('agentModal').classList.add('hidden');
+        };
+
+        document.getElementById('downloadBtn').onclick = () => {
+            let csv = 'Month,' + services.map(s => s.name).join(',') + '\n';
+            history.forEach(h => {
+                csv += h.month + ',' + services.map(s => h.counts[s.id]).join(',') + '\n';
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('hidden', '');
+            a.setAttribute('href', url);
+            a.setAttribute('download', 'streamsim_results.csv');
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        };
+
+        // Initialize on load
+        initSim();
+    </script>
+</body>
+
+</html>
+document.body.removeChild(a);
+};
+
+// Initialize on load
+window.onload = initSim;
+</script>
+</body>
+
+</html>
