@@ -218,6 +218,19 @@
                     <div class="flex items-center"><div class="w-3 h-3 rounded-full mr-2" style="background: linear-gradient(135deg, #E50914 50%, #0095FF 50%)"></div>Multiple services</div>
                 </div>
             </div>
+
+            <!-- Correlation Matrix -->
+            <div id="corrCard" class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Service Subscription Correlations</h3>
+                    <label class="flex items-center gap-2 text-[10px] text-gray-500 cursor-pointer">
+                        <input type="checkbox" id="corrNormalize" onchange="renderCorrMatrix()" class="accent-red-600" checked>
+                        Use monthly changes
+                    </label>
+                </div>
+                <p class="text-[10px] text-gray-600 mb-3">How much do subscriber counts move together? +1 = in sync, −1 = opposite, 0 = no relationship. <b class="text-gray-500">Raw counts are often all high</b> because every service tends to grow early on — that shared trend inflates correlations. Check "Use monthly changes" to remove the trend and see true co-movement.</p>
+                <div id="corrMatrix"></div>
+            </div>
         </div>
     </main>
 
@@ -476,6 +489,7 @@ function initSim(overrides) {
     updateStats();
     updateUI();
     renderServiceProfiles();
+    renderCorrMatrix();
     renderPauseTimeline();
     lastPauseParams = snapshotParams(); // baseline for first checkpoint diff
 }
@@ -520,9 +534,12 @@ function renderServices() {
                     <div class="w-3 h-3 rounded-full" style="background-color:${s.color}"></div>
                     <h3 class="font-bold text-sm">${s.name}</h3>
                 </div>
-                <select data-id="${s.id}" data-prop="genreFocus" class="bg-[#111] text-[9px] border border-gray-700 rounded px-1 outline-none text-gray-300">
-                    ${GENRES.map(g => `<option value="${g}" ${s.genreFocus === g ? 'selected' : ''}>${g}</option>`).join('')}
-                </select>
+                <div class="flex items-center gap-2">
+                    <select data-id="${s.id}" data-prop="genreFocus" class="bg-[#111] text-[9px] border border-gray-700 rounded px-1 outline-none text-gray-300">
+                        ${GENRES.map(g => `<option value="${g}" ${s.genreFocus === g ? 'selected' : ''}>${g}</option>`).join('')}
+                    </select>
+                    <button onclick="removeServiceById(${s.id})" class="text-gray-600 hover:text-red-400 transition text-xs leading-none" title="Remove this service" ${services.length <= 1 ? 'disabled' : ''}>✕</button>
+                </div>
             </div>
             <div class="space-y-2">
                 ${[['price','Price ($)', s.price, 5, 30, 1, '$' + s.price.toFixed(2)],
@@ -605,6 +622,26 @@ function removeService() {
     renderServices();
     renderGrid();
     renderServiceProfiles();
+}
+
+function removeServiceById(id) {
+    if (services.length <= 1) return;
+    const idx = services.findIndex(s => s.id === id);
+    if (idx === -1) return;
+    agents.forEach(a => {
+        a.subscriptions = a.subscriptions.filter(sid => sid !== id);
+        delete a.monthsSubscribed[id];
+    });
+    services.splice(idx, 1);
+    if (chart && chart.data.datasets[idx]) {
+        chart.data.datasets.splice(idx, 1);
+        chart.update('none');
+    }
+    document.getElementById('kCount').value = services.length;
+    renderServices();
+    renderGrid();
+    renderServiceProfiles();
+    renderCorrMatrix();
 }
 
 // ── Grid ───────────────────────────────────────────────────────────────────
@@ -783,6 +820,60 @@ function renderServiceProfiles() {
     });
 }
 
+// ── Correlation Matrix ─────────────────────────────────────────────────────
+function pearsonCorr(a, b) {
+    const n = a.length;
+    if (n < 2) return 0;
+    const meanA = a.reduce((s,v)=>s+v,0)/n;
+    const meanB = b.reduce((s,v)=>s+v,0)/n;
+    let num=0, da=0, db=0;
+    for(let i=0;i<n;i++) { const x=a[i]-meanA, y=b[i]-meanB; num+=x*y; da+=x*x; db+=y*y; }
+    return (da===0||db===0) ? 0 : num/Math.sqrt(da*db);
+}
+
+function renderCorrMatrix() {
+    const el = document.getElementById('corrMatrix');
+    if (!el || history.length < 3) { if(el) el.innerHTML='<p class="text-[10px] text-gray-600 italic">Run the simulation to see correlations.</p>'; return; }
+    const detrend = document.getElementById('corrNormalize')?.checked;
+    // Build time series per service (only months where the service was active)
+    const series = services.map(s => history
+        .filter(h => h.month >= s.joinedMonth)
+        .map(h => h.counts[s.id] ?? 0)
+    );
+    // Detrend: use first differences (month-over-month changes) to remove shared growth trend
+    const data = series.map(arr => {
+        if (!detrend) return arr;
+        return arr.slice(1).map((v, i) => v - arr[i]);
+    });
+    // Compute correlation matrix
+    const n = services.length;
+    const matrix = Array.from({length:n},(_,i)=>Array.from({length:n},(_,j)=>pearsonCorr(data[i],data[j])));
+    // Render table
+    const colorFor = v => {
+        if (v >= 0.9) return '#1a4a1a';
+        if (v >= 0.6) return '#1a3a1a';
+        if (v >= 0.3) return '#1a2a1a';
+        if (v > -0.3) return '#1a1a1a';
+        if (v > -0.6) return '#3a1a1a';
+        if (v > -0.9) return '#4a1a1a';
+        return '#5a1a1a';
+    };
+    const textFor = v => v >= 0.3 ? '#4ade80' : v <= -0.3 ? '#f87171' : '#6b7280';
+    let html = `<table class="w-full text-[10px] border-collapse"><thead><tr><th class="p-1 text-left text-gray-600"></th>`;
+    services.forEach(s => { html += `<th class="p-1 text-center font-bold" style="color:${s.color}">${s.name.substring(0,7)}</th>`; });
+    html += '</tr></thead><tbody>';
+    services.forEach((s,i) => {
+        html += `<tr><td class="p-1 font-bold text-right pr-2" style="color:${s.color}">${s.name.substring(0,7)}</td>`;
+        matrix[i].forEach((v,j) => {
+            const diag = i===j;
+            html += `<td class="p-1 text-center rounded" style="background:${diag?'#111':colorFor(v)};color:${diag?'#444':textFor(v)}">${diag?'—':v.toFixed(2)}</td>`;
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+}
+
 // ── Simulation step ────────────────────────────────────────────────────────
 function step() {
     if (currentMonth >= MONTHS) {
@@ -838,6 +929,7 @@ function step() {
     updateChart();
     updateStats();
     if (currentMonth % 3 === 0) renderServiceProfiles();
+    renderCorrMatrix();
 }
 
 function updateUI() {
@@ -987,9 +1079,10 @@ function showPauseCard(event) {
           ).join('')}</div>`
         : '';
 
+    const isFirstCard = container.children.length === 0;
+
     let paramsHtml = '';
     if (event.params) {
-        const { changed, all } = buildParamRows(event.params, lastPauseParams);
         const rowHtml = rows => rows.map(r =>
             `<div class="flex items-center justify-between text-[11px] py-0.5 border-b border-gray-800">
                 <span class="${r.color ? '' : 'text-gray-400'}" ${r.color ? `style="color:${r.color}"` : ''}>${r.label}</span>
@@ -999,17 +1092,41 @@ function showPauseCard(event) {
             </div>`
         ).join('');
 
-        const noChanges = changed.length === 0;
-        const summaryLabel = noChanges ? 'No changes from last checkpoint' : `${changed.length} setting${changed.length > 1 ? 's' : ''} changed`;
-        paramsHtml = `
-            <div class="mt-3 border-t border-gray-700 pt-2">
-                <div class="params-changed">${noChanges ? '' : rowHtml(changed)}</div>
-                <div class="flex items-center gap-1 cursor-pointer select-none mt-1 text-[10px] text-gray-600 hover:text-gray-400 transition" onclick="togglePauseCardParams('${id}')">
-                    <svg class="params-chevron w-3 h-3 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-                    <span>${summaryLabel} — show all</span>
-                </div>
-                <div class="params-all mt-1" style="display:none">${rowHtml(all)}</div>
-            </div>`;
+        if (isFirstCard) {
+            // First checkpoint: show all params as initial conditions, no diff framing
+            const { all } = buildParamRows(event.params, null);
+            paramsHtml = `
+                <div class="mt-3 border-t border-gray-700 pt-2">
+                    <div class="flex items-center gap-1 cursor-pointer select-none text-[10px] text-gray-600 hover:text-gray-400 transition" onclick="togglePauseCardParams('${id}')">
+                        <svg class="params-chevron w-3 h-3 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        <span>Initial conditions — show all</span>
+                    </div>
+                    <div class="params-all mt-1" style="display:none">${rowHtml(all)}</div>
+                </div>`;
+        } else {
+            const { changed, all } = buildParamRows(event.params, lastPauseParams);
+            const noChanges = changed.length === 0;
+            const summaryLabel = noChanges ? 'No changes from last checkpoint' : `${changed.length} setting${changed.length > 1 ? 's' : ''} changed`;
+            paramsHtml = `
+                <div class="mt-3 border-t border-gray-700 pt-2">
+                    <div class="params-changed">${noChanges ? '' : rowHtml(changed)}</div>
+                    <div class="flex items-center gap-1 cursor-pointer select-none mt-1 text-[10px] text-gray-600 hover:text-gray-400 transition" onclick="togglePauseCardParams('${id}')">
+                        <svg class="params-chevron w-3 h-3 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        <span>${summaryLabel} — show all</span>
+                    </div>
+                    <div class="params-all mt-1" style="display:none">${rowHtml(all)}</div>
+                </div>`;
+        }
+    }
+
+    let entrantHtml = '';
+    if (event.params && lastPauseParams) {
+        const prevNames = new Set(lastPauseParams.services.map(s => s.name));
+        const currNames = new Set(event.params.services.map(s => s.name));
+        const entered = event.params.services.filter(s => !prevNames.has(s.name));
+        const dropped = lastPauseParams.services.filter(s => !currNames.has(s.name));
+        if (entered.length) entrantHtml += entered.map(s => `<span class="text-[10px] font-bold px-2 py-0.5 rounded" style="background:${s.color}22;color:${s.color}">+ ${s.name} entered</span>`).join('');
+        if (dropped.length) entrantHtml += dropped.map(s => `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-800 text-gray-500 line-through">${s.name} left</span>`).join('');
     }
 
     const card = document.createElement('div');
@@ -1017,9 +1134,10 @@ function showPauseCard(event) {
     card.className = 'bg-netflix-dark border border-yellow-500/50 rounded-lg text-sm overflow-hidden';
     card.innerHTML = `
         <div class="flex justify-between items-center px-4 py-3 cursor-pointer select-none hover:bg-white/5 transition" onclick="togglePauseCardBody('${id}')">
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-yellow-400 font-bold text-xs uppercase tracking-widest">⏸ Month ${event.month}</span>
                 <span class="text-white font-semibold">${event.title}</span>
+                ${entrantHtml}
             </div>
             <svg class="chevron w-4 h-4 text-gray-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
         </div>
@@ -1619,6 +1737,20 @@ document.getElementById('runBtn').onclick = () => {
         isRunning = false;
         clearInterval(simInterval);
         document.getElementById('runBtn').innerText = 'Resume Simulation';
+        // Treat manual pause as a checkpoint
+        if (currentMonth > 0 && !pauseLines.includes(currentMonth)) {
+            pauseLines.push(currentMonth);
+            if (chart) chart.update('none');
+            renderPauseTimeline();
+            showPauseCard({
+                month: currentMonth,
+                title: 'Manual Pause',
+                body: '',
+                steps: [],
+                stats: buildPauseStats(),
+                params: snapshotParams()
+            });
+        }
     } else {
         isRunning = true;
         document.getElementById('runBtn').innerText = 'Pause';
