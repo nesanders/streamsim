@@ -85,6 +85,7 @@ M = 1 + (−IncomeGrowth × 0.10) + (Inflation × 0.04)
 
 ## Conventions and preferences
 
+- **Commit messages should be short** — one concise subject line, no body paragraph.
 - **No build step ever.** All changes go directly in `index.html`. Do not introduce npm, webpack, or any compilation.
 - **No new CDN dependencies** without a good reason. The two existing ones (Chart.js, Tailwind) are intentional and sufficient.
 - **Audience is high school students.** Avoid jargon in UI-facing strings. Prefer plain English over economic terminology. Technical terms in the "How It Works" modal are fine and expected — but always paired with a plain-language explanation.

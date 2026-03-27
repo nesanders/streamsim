@@ -278,6 +278,8 @@ let history = [];
 let pauseLines = [];          // months where pauses were recorded for vertical lines
 let scheduledPauses = [];     // [{month, title, body, steps}] from active scenario
 let lastPauseParams = null;   // snapshot at last pause (or sim start), for diffing
+let lastAgentSnapshot = null; // agent subscription snapshot at last pause, for Sankey
+let lastServicesMeta = null;  // service {id,name,color} at last pause, for Sankey labels
 let highlightSubCount = -1;   // -1 = none; 0/1/2/3 = highlight that sub-count tier
 let insightCharts = {};
 
@@ -479,7 +481,9 @@ function initSim(overrides) {
     document.getElementById('runBtn').innerText = 'Run Simulation';
     document.getElementById('clearHighlightBtn').classList.add('hidden');
     document.getElementById('pauseCards').innerHTML = '';
-    lastPauseParams = null; // will be set after services are ready
+    lastPauseParams = null;    // will be set after services are ready
+    lastAgentSnapshot = null;
+    lastServicesMeta = null;
 
     renderGenreSliders();
     renderServices();
@@ -492,6 +496,8 @@ function initSim(overrides) {
     renderCorrMatrix();
     renderPauseTimeline();
     lastPauseParams = snapshotParams(); // baseline for first checkpoint diff
+    lastAgentSnapshot = agents.map(a => [...a.subscriptions]);
+    lastServicesMeta  = services.map(s => ({ id: s.id, name: s.name, color: s.color }));
 }
 
 // ── Genre ──────────────────────────────────────────────────────────────────
@@ -899,6 +905,8 @@ function step() {
             title: 'Simulation Complete',
             stats: buildPauseStats(),
             params: snapshotParams(),
+            agentSnapshot: snapshotAgentSubs(),
+            servicesMeta: services.map(s => ({ id: s.id, name: s.name, color: s.color })),
             steps: []
         };
         showPauseCard(finalEvent);
@@ -918,6 +926,8 @@ function step() {
         // Build a stats snapshot before the advance happens
         pending.stats = buildPauseStats();
         pending.params = snapshotParams();
+        pending.agentSnapshot = snapshotAgentSubs();
+        pending.servicesMeta = services.map(s => ({ id: s.id, name: s.name, color: s.color }));
         showPauseCard(pending);
         return;
     }
@@ -1003,6 +1013,141 @@ function updateStats() {
     if (distChart) { distChart.data.datasets[0].data = dist; distChart.update('none'); }
 
     updateMacroDisplay();
+}
+
+// ── Subscriber flow diagram ────────────────────────────────────────────────
+function renderSankey(container, prevSnap, currSnap, leftMeta, rightMeta) {
+    // Each agent is placed in one state: 'none' | serviceId | 'multi'
+    const stateOf = subs => subs.length === 0 ? 'none' : subs.length === 1 ? subs[0] : 'multi';
+
+    // Build flow map
+    const flowMap = {};
+    prevSnap.forEach((p, i) => {
+        const from = stateOf(p), to = stateOf(currSnap[i] || []);
+        const key = `${from}|${to}`;
+        flowMap[key] = (flowMap[key] || 0) + 1;
+    });
+    const flows = Object.entries(flowMap).map(([key, count]) => {
+        const [f, t] = key.split('|');
+        const toId   = id => id === 'none' || id === 'multi' ? id : parseInt(id);
+        return { from: toId(f), to: toId(t), count };
+    }).filter(f => f.count > 0);
+
+    // Node totals
+    const leftTotals = {}, rightTotals = {};
+    flows.forEach(f => {
+        leftTotals[f.from]  = (leftTotals[f.from]  || 0) + f.count;
+        rightTotals[f.to]   = (rightTotals[f.to]   || 0) + f.count;
+    });
+
+    const orderOf = id => id === 'multi' ? 990 : id === 'none' ? 999 : id;
+    const sortIds = obj => Object.keys(obj)
+        .map(k => isNaN(k) ? k : parseInt(k))
+        .sort((a, b) => orderOf(a) - orderOf(b));
+    const leftIds  = sortIds(leftTotals);
+    const rightIds = sortIds(rightTotals);
+
+    const metaFor = (id, meta) => {
+        if (id === 'none')  return { label: 'No subscription', color: '#555' };
+        if (id === 'multi') return { label: 'Multiple',        color: '#888' };
+        const m = meta.find(s => s.id === id);
+        return m ? { label: m.name, color: m.color } : { label: `Svc ${id}`, color: '#666' };
+    };
+
+    const W = 460, NW = 12, gap = 8, padX = 92;
+    const nNodes = Math.max(leftIds.length, rightIds.length);
+    const H = Math.max(160, nNodes * 36 + 20);
+
+    const positionNodes = (ids, totals) => {
+        const total = ids.reduce((s, id) => s + (totals[id] || 0), 0) || 1;
+        const usableH = H - 20;
+        let y = 10;
+        return ids.map(id => {
+            const h = Math.max(6, ((totals[id] || 0) / total) * usableH - gap);
+            const node = { id, y, h };
+            y += h + gap;
+            return node;
+        });
+    };
+
+    const leftPos  = positionNodes(leftIds,  leftTotals);
+    const rightPos = positionNodes(rightIds, rightTotals);
+
+    const lFill = {}, rFill = {};
+    leftPos.forEach(n  => lFill[n.id] = n.y);
+    rightPos.forEach(n => rFill[n.id] = n.y);
+
+    let paths = '', rects = '', labels = '';
+
+    // "Before" / "After" column headers
+    labels += `<text x="${padX + NW/2}"     y="6" text-anchor="middle" fill="#444" font-size="8" font-family="Inter,sans-serif">Before</text>`;
+    labels += `<text x="${W-padX-NW/2}" y="6" text-anchor="middle" fill="#444" font-size="8" font-family="Inter,sans-serif">After</text>`;
+
+    // Flow ribbons
+    [...flows].sort((a, b) => b.count - a.count).forEach(f => {
+        const ln = leftPos.find(n  => String(n.id) === String(f.from));
+        const rn = rightPos.find(n => String(n.id) === String(f.to));
+        if (!ln || !rn) return;
+
+        const lh = (f.count / (leftTotals[f.from]  || 1)) * ln.h;
+        const rh = (f.count / (rightTotals[f.to]   || 1)) * rn.h;
+
+        const x1 = padX + NW, y1t = lFill[f.from];
+        const x2 = W - padX - NW, y2t = rFill[f.to];
+        const mx = (x1 + x2) / 2;
+        const self = String(f.from) === String(f.to);
+        const col  = metaFor(f.from, leftMeta).color;
+
+        paths += `<path d="M${x1},${y1t} C${mx},${y1t} ${mx},${y2t} ${x2},${y2t} ` +
+                 `L${x2},${y2t+rh} C${mx},${y2t+rh} ${mx},${y1t+lh} ${x1},${y1t+lh} Z" ` +
+                 `fill="${col}" opacity="${self ? 0.38 : 0.2}"/>`;
+        lFill[f.from] += lh;
+        rFill[f.to]   += rh;
+    });
+
+    // Node rectangles
+    leftPos.forEach(n => {
+        const { color } = metaFor(n.id, leftMeta);
+        rects += `<rect x="${padX}" y="${n.y}" width="${NW}" height="${n.h}" fill="${color}" rx="2"/>`;
+    });
+    rightPos.forEach(n => {
+        const { color } = metaFor(n.id, rightMeta);
+        rects += `<rect x="${W-padX-NW}" y="${n.y}" width="${NW}" height="${n.h}" fill="${color}" rx="2"/>`;
+    });
+
+    // Labels + counts
+    leftPos.forEach(n => {
+        const { label, color } = metaFor(n.id, leftMeta);
+        const cy = n.y + n.h / 2;
+        labels += `<text x="${padX-5}" y="${cy-4}"  text-anchor="end" dominant-baseline="middle" fill="${color}" font-size="9"  font-family="Inter,sans-serif">${label}</text>`;
+        labels += `<text x="${padX-5}" y="${cy+6}"  text-anchor="end" dominant-baseline="middle" fill="#555"    font-size="8"  font-family="Inter,sans-serif">${leftTotals[n.id]}</text>`;
+    });
+    rightPos.forEach(n => {
+        const { label, color } = metaFor(n.id, rightMeta);
+        const cy = n.y + n.h / 2;
+        labels += `<text x="${W-padX+5}" y="${cy-4}" text-anchor="start" dominant-baseline="middle" fill="${color}" font-size="9" font-family="Inter,sans-serif">${label}</text>`;
+        labels += `<text x="${W-padX+5}" y="${cy+6}" text-anchor="start" dominant-baseline="middle" fill="#555"    font-size="8" font-family="Inter,sans-serif">${rightTotals[n.id]}</text>`;
+    });
+
+    const svgMarkup = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="overflow:visible">${paths}${rects}${labels}</svg>`;
+    container.innerHTML = svgMarkup;
+    container.style.cursor = 'zoom-in';
+    container.title = 'Click to expand';
+    container.onclick = () => {
+        let overlay = document.getElementById('sankeyOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'sankeyOverlay';
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.93);z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px;cursor:zoom-out;';
+            overlay.innerHTML = '<div id="sankeyOverlayInner" style="width:100%;max-width:860px;"></div><div style="position:absolute;top:16px;right:20px;font-size:11px;color:#555;letter-spacing:0.1em;text-transform:uppercase;">Click anywhere to close</div>';
+            overlay.onclick = () => overlay.style.display = 'none';
+            document.body.appendChild(overlay);
+        }
+        const inner = document.getElementById('sankeyOverlayInner');
+        const bigH = Math.round(window.innerHeight * 0.75);
+        inner.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${bigH}" style="overflow:visible">${paths}${rects}${labels}</svg>`;
+        overlay.style.display = 'flex';
+    };
 }
 
 // ── Pause cards ────────────────────────────────────────────────────────────
@@ -1092,6 +1237,7 @@ function showPauseCard(event) {
         : '';
 
     const isFirstCard = container.children.length === 0;
+    const hasSankey = !isFirstCard && lastAgentSnapshot && event.agentSnapshot;
 
     let paramsHtml = '';
     if (event.params) {
@@ -1157,13 +1303,28 @@ function showPauseCard(event) {
             ${event.body ? `<p class="mt-1 text-gray-400 text-xs leading-relaxed">${event.body}</p>` : ''}
             ${stepsHtml}
             ${statsHtml}
+            ${hasSankey ? `<div class="mt-3 border-t border-gray-700 pt-2"><div class="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Subscriber Flow</div><div id="sankey-${event.month}"></div></div>` : ''}
             ${paramsHtml}
         </div>
     `;
     container.prepend(card);
 
-    // Update the baseline for next checkpoint diff
+    // Render flow diagram if we have before/after snapshots
+    if (hasSankey) {
+        const sankeyEl = document.getElementById(`sankey-${event.month}`);
+        if (sankeyEl) renderSankey(sankeyEl, lastAgentSnapshot, event.agentSnapshot, lastServicesMeta || [], event.servicesMeta || []);
+    }
+
+    // Update baselines for next checkpoint diff
     lastPauseParams = event.params;
+    if (event.agentSnapshot) {
+        lastAgentSnapshot = event.agentSnapshot;
+        lastServicesMeta  = event.servicesMeta || [];
+    }
+}
+
+function snapshotAgentSubs() {
+    return agents.map(a => [...a.subscriptions]);
 }
 
 function snapshotParams() {
@@ -1760,7 +1921,9 @@ document.getElementById('runBtn').onclick = () => {
                 body: '',
                 steps: [],
                 stats: buildPauseStats(),
-                params: snapshotParams()
+                params: snapshotParams(),
+                agentSnapshot: snapshotAgentSubs(),
+                servicesMeta: services.map(s => ({ id: s.id, name: s.name, color: s.color }))
             });
         }
     } else {
