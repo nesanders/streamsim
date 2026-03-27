@@ -595,7 +595,7 @@ function addService(cfg) {
         // Fill nulls for months 0..currentMonth, undefined (future) beyond
         const pastNulls = Array(currentMonth + 2).fill(null); // indices 0..currentMonth
         chart.data.datasets.push({
-            label: s.name, data: pastNulls,
+            label: s.name, serviceId: s.id, data: pastNulls,
             borderColor: s.color, backgroundColor: s.color + '18',
             fill: true, tension: 0.4, pointRadius: 0
         });
@@ -633,8 +633,16 @@ function removeServiceById(id) {
         delete a.monthsSubscribed[id];
     });
     services.splice(idx, 1);
-    if (chart && chart.data.datasets[idx]) {
-        chart.data.datasets.splice(idx, 1);
+    if (chart) {
+        const ds = chart.data.datasets.find(d => d.serviceId === id);
+        if (ds) {
+            // Ghost: keep historical line visible but mark as inactive
+            ds.borderColor = '#444';
+            ds.backgroundColor = 'transparent';
+            ds.borderDash = [4, 4];
+            ds.fill = false;
+            ds.label = ds.label.replace(' (removed)', '') + ' (removed)';
+        }
         chart.update('none');
     }
     document.getElementById('kCount').value = services.length;
@@ -706,7 +714,7 @@ function initChart() {
         data: {
             labels: Array.from({ length: MONTHS + 1 }, (_, i) => i),
             datasets: services.map(s => ({
-                label: s.name,
+                label: s.name, serviceId: s.id,
                 data: [],
                 borderColor: s.color,
                 backgroundColor: s.color + '18',
@@ -835,19 +843,21 @@ function renderCorrMatrix() {
     const el = document.getElementById('corrMatrix');
     if (!el || history.length < 3) { if(el) el.innerHTML='<p class="text-[10px] text-gray-600 italic">Run the simulation to see correlations.</p>'; return; }
     const detrend = document.getElementById('corrNormalize')?.checked;
-    // Build time series per service (only months where the service was active)
-    const series = services.map(s => history
-        .filter(h => h.month >= s.joinedMonth)
-        .map(h => h.counts[s.id] ?? 0)
-    );
-    // Detrend: use first differences (month-over-month changes) to remove shared growth trend
-    const data = series.map(arr => {
-        if (!detrend) return arr;
-        return arr.slice(1).map((v, i) => v - arr[i]);
-    });
-    // Compute correlation matrix
+    // Compute pairwise over months where BOTH services were active
     const n = services.length;
-    const matrix = Array.from({length:n},(_,i)=>Array.from({length:n},(_,j)=>pearsonCorr(data[i],data[j])));
+    const matrix = Array.from({length: n}, (_, i) => Array.from({length: n}, (_, j) => {
+        if (i === j) return 1;
+        const sA = services[i], sB = services[j];
+        const startMonth = Math.max(sA.joinedMonth || 0, sB.joinedMonth || 0, 1);
+        const overlap = history.filter(h => h.month >= startMonth);
+        if (overlap.length < 3) return null;
+        const arrA = overlap.map(h => h.counts[sA.id] ?? 0);
+        const arrB = overlap.map(h => h.counts[sB.id] ?? 0);
+        if (!detrend) return pearsonCorr(arrA, arrB);
+        const dA = arrA.slice(1).map((v, k) => v - arrA[k]);
+        const dB = arrB.slice(1).map((v, k) => v - arrB[k]);
+        return dA.length < 2 ? null : pearsonCorr(dA, dB);
+    }));
     // Render table
     const colorFor = v => {
         if (v >= 0.9) return '#1a4a1a';
@@ -866,7 +876,8 @@ function renderCorrMatrix() {
         html += `<tr><td class="p-1 font-bold text-right pr-2" style="color:${s.color}">${s.name.substring(0,7)}</td>`;
         matrix[i].forEach((v,j) => {
             const diag = i===j;
-            html += `<td class="p-1 text-center rounded" style="background:${diag?'#111':colorFor(v)};color:${diag?'#444':textFor(v)}">${diag?'—':v.toFixed(2)}</td>`;
+            const noData = !diag && v === null;
+            html += `<td class="p-1 text-center rounded" style="background:${diag||noData?'#111':colorFor(v)};color:${diag?'#444':noData?'#333':textFor(v)}">${diag?'—':noData?'n/a':v.toFixed(2)}</td>`;
         });
         html += '</tr>';
     });
@@ -938,13 +949,14 @@ function updateUI() {
 }
 
 function updateChart() {
-    services.forEach((s, i) => {
-        if (!chart.data.datasets[i]) return;
+    services.forEach(s => {
+        const ds = chart.data.datasets.find(d => d.serviceId === s.id);
+        if (!ds) return;
         const data = [s.joinedMonth === 0 ? 0 : null];
         history.forEach(h => {
             data.push(h.month < s.joinedMonth ? null : (h.counts[s.id] ?? 0));
         });
-        chart.data.datasets[i].data = data;
+        ds.data = data;
     });
     chart.update('none');
 }

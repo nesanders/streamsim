@@ -17,13 +17,17 @@ The simulation is self-contained HTML/CSS/JS with two CDN dependencies:
 | Name | Type | Purpose |
 |---|---|---|
 | `Agent` | class | One simulated viewer. Holds income, age, genre preference, price sensitivity, active subscriptions, and tenure. `evaluate()` runs churn + subscribe logic each month. |
-| `Service` | class | One streaming service. Holds price, content quality, content volume, genre focus, color. |
+| `Service` | class | One streaming service. Holds price, content quality, content volume, genre focus, color, and `joinedMonth` (0 = present from start; >0 = mid-sim entrant). |
 | `agents[]` / `services[]` | arrays | Live simulation state |
 | `history[]` | array | `[{month, counts: {serviceId: count}}]` — used to draw the main chart |
-| `pauseLines[]` | array | Months where the sim auto-paused; drawn as vertical lines on the chart via `pauseLinePlugin` |
-| `scheduledPauses[]` | array | Pause events loaded from a scenario; each has `{month, title, body, steps}` |
+| `pauseLines[]` | array | Months where pauses were recorded; drawn as vertical dashed lines on the chart via `pauseLinePlugin` |
+| `scheduledPauses[]` | array | Pause events pending this run; each has `{month, title, body, steps}`. Populated from scenario `pauseEvents` and from user timeline clicks. |
+| `userPauses[]` | array | Months the user manually placed on the pause timeline. Mirrored into `scheduledPauses`. |
+| `lastPauseParams` | object | Snapshot from `snapshotParams()` at the last checkpoint (or sim init). Used to diff param changes in checkpoint cards. |
 | `highlightSubCount` | int | -1 = no highlight; 0/1/2/3 = dim all dots except that subscription tier |
 | `genreWeights` | object | `{Action, Drama, Comedy, Kids, 'Sci-Fi'}` — controls weighted random genre assignment |
+| `MONTHS` | let (number) | Total simulation duration in months. Set from the duration slider at each `initSim()`. Default 48 (4 years). |
+| `NAMES` | const array | `['NetStream', 'CineMax', 'GlowTV', 'EdgeVideo', 'PrimeWatch']` — service names by index. |
 
 ### Core model equations
 
@@ -59,11 +63,20 @@ M = 1 + (−IncomeGrowth × 0.10) + (Inflation × 0.04)
 
 | Function | What it does |
 |---|---|
-| `initSim(overrides)` | Full reset. Pass `{keepParams: true}` to preserve slider/service values. Pass a scenario's `params` object to load that scenario. |
-| `step()` | Advances one month: checks for scheduled pauses, runs `agent.evaluate()` for all agents, records history, updates all UI. |
+| `initSim(overrides)` | Full reset. Pass `{keepParams: true}` to preserve slider/service values. Pass a scenario's `params` object to load that scenario. Sets `MONTHS` from the duration slider, resets `pauseLines`, `userPauses`, `lastPauseParams`, and clears checkpoint cards. |
+| `step()` | Advances one month: checks for scheduled pauses, runs `agent.evaluate()` for all agents, records history, updates all UI. Fires a "Simulation Complete" checkpoint card when `currentMonth >= MONTHS`. |
+| `addService(cfg)` | Adds a new service mid-sim without resetting history. Sets `joinedMonth = currentMonth + 1`. Patches a new dataset into the live chart with nulls for pre-entry months. |
+| `removeService()` | Removes the last service from `services[]`, cancels all agent subscriptions to it, and splices its chart dataset. |
+| `removeServiceById(id)` | Removes a specific service by id (not just the last one). Same cleanup as `removeService()`. |
 | `renderServiceProfiles()` | Redraws the per-service age + genre breakdown bars. Called every 3 months during run and on reset. |
+| `renderCorrMatrix()` | Renders the Pearson correlation heatmap between service subscriber time series. When "Use monthly changes" is checked, correlates first differences (removes shared growth trend). Only active services with `joinedMonth <= currentMonth` are included. |
+| `showPauseCard(event)` | Prepends a checkpoint card above the subscriber chart. First card uses "Initial conditions" mode (no diff). Subsequent cards diff `event.params` against `lastPauseParams` and highlight changes. Detects new entrants / dropped services by name. |
+| `buildPauseStats()` | Snapshots current subscriber counts per service with delta vs. prior pause. Handles mid-sim entrants (shows "entering market" if `joinedMonth > currentMonth`). |
+| `snapshotParams()` | Returns `{economy, genres, services}` with values rounded to display precision. Used as the baseline for checkpoint card diffs. |
+| `renderPauseTimeline()` | Redraws the interactive timeline bar showing scheduled pauses, fired pauses, and the current month indicator. |
+| `handleTimelineClick(e)` | Handles clicks on the pause timeline. Adds or removes a user pause at the clicked month. |
 | `renderInsightCharts()` | Creates the four Chart.js mini-charts inside the "How It Works" modal. Called via `requestAnimationFrame` after the modal HTML is injected. |
-| `getScenarios()` | Returns the three scenario config objects. Scenarios with `pauseEvents` arrays will auto-pause at the specified months. |
+| `getScenarios()` | Returns the four scenario config objects (A–D). Scenarios with `pauseEvents` arrays will auto-pause at the specified months. |
 | `styleDot(dot, agent)` | Sets background gradient and dimming on a single agent dot. |
 
 ## Keeping this file current
@@ -91,5 +104,8 @@ M = 1 + (−IncomeGrowth × 0.10) + (Inflation × 0.04)
 
 - `renderInsightCharts()` is called via `requestAnimationFrame` because the canvas elements are injected into the DOM by `showModal()` just before. Don't call it synchronously.
 - The `pauseLinePlugin` is registered globally with `Chart.register()` before any chart is created. It reads from the module-level `pauseLines[]` array.
-- Changing service count via the dropdown calls `initSim({keepParams: true})`, which captures the *current* services before rebuilding. If you change the number of services, the extra/removed ones get default random values.
+- **Mid-sim service count changes** no longer call `initSim`. When `currentMonth > 0`, changing the kCount dropdown calls `addService()` / `removeService()` instead. Only a fresh sim (month 0) does a full reinit via `initSim({keepParams: true})`.
+- `updateChart()` now emits `null` for months before a service's `joinedMonth`, creating a visual gap on the chart for late-entering services.
+- **Checkpoint card first-card detection** uses `container.children.length === 0` at render time. The first card always shows "Initial conditions" with no diff, regardless of `lastPauseParams`.
 - `distChart`'s `onClick` handler does the dot highlighting directly — it doesn't go through a shared state update function. If you refactor dot rendering, make sure this still works.
+- The correlation matrix uses first differences by default (checkbox checked). Raw counts will show spuriously high correlations due to shared growth trend — this is explained in the card description.

@@ -14,22 +14,41 @@ Open `index.html` in any modern browser. No installation or internet connection 
 
 | Control | What it does |
 |---|---|
-| **Run / Pause** | Steps the simulation forward one month at a time (200ms/step) |
+| **Run / Pause** | Steps the simulation forward one month at a time (200ms/step). Pausing mid-sim records a checkpoint card above the subscriber chart. |
 | **Restart** | Resets agents and history, keeping your current service and economy settings |
 | **Reset Params** | Resets everything including parameters to defaults with new random service values |
+| **Simulation Length** | Sets the total run duration (1–20 years). Takes effect immediately on the chart. |
+| **Pause Points timeline** | Click any point on the timeline bar to schedule an automatic pause at that month. Click an existing marker to remove it. |
 | Economy sliders | Adjust household income growth and inflation; both independently scale how price-sensitive viewers become |
-| Service cards | Set price, content quality, content volume, and genre focus for each service |
+| Service cards | Set price, content quality, content volume, and genre focus for each service. Use the ✕ button to remove a service. |
+| Number of Services | Adding services mid-sim introduces a new entrant — its chart line starts from the month it joined. |
 | Audience Genre Mix | Set the distribution of genre preferences across the viewer population |
+
+## Checkpoint cards
+
+Whenever the simulation pauses — whether from a scenario, a scheduled pause, a manual click, or reaching the end — a checkpoint card appears above the subscriber chart. Each card shows:
+
+- Subscriber counts per service (with change from the prior checkpoint)
+- Parameter snapshot: economy settings, genre weights, and per-service values
+- Changes since the last checkpoint highlighted in yellow; new/removed services flagged in the header
+- The first card shows initial conditions only (no diff)
+
+Cards are collapsible. Click the header to collapse; use the `>` arrow to expand the full settings list.
+
+## Correlation matrix
+
+A heatmap at the bottom of the dashboard shows Pearson correlations between each pair of service subscriber time series. **"Use monthly changes"** (on by default) computes correlations on month-over-month changes rather than raw counts, removing the shared growth trend that would otherwise inflate all correlations toward +1.
 
 ## Scenarios
 
-Three pre-configured classroom scenarios are available under **Scenarios** in the nav. Each loads specific parameter settings and poses a guiding question. Scenarios B and C include automatic pause points with on-screen instructions prompting students to change variables and observe the effect.
+Four pre-configured classroom scenarios are available under **Scenarios** in the nav. Each loads specific parameter settings and poses a guiding question. Scenarios B, C, and D include automatic pause points with on-screen instructions prompting students to change variables and observe the effect.
 
 | Scenario | Concept |
 |---|---|
 | A — Price War | Does cheaper always win when quality is equal? |
 | B — Recession Shock | How does a sudden income drop ripple through a streaming market? |
 | C — Niche vs. Mass Market | High-quality niche content vs. high-volume broad content — which strategy wins? |
+| D — New Market Entrant | Two incumbents ignore a large audience segment. Can a new entrant exploit the gap? |
 
 ## How the model works
 
@@ -38,6 +57,7 @@ Each simulated viewer has an **income level**, **price sensitivity** (inversely 
 - **Subscribing**: higher scores → higher probability, but each additional subscription is less likely (diminishing returns)
 - **Canceling**: driven primarily by content quality — high-quality services are sticky even in a recession; low-quality services lose subscribers quickly regardless of price
 - **Economy**: income growth and inflation each independently shift a spending pressure multiplier that scales every viewer's price sensitivity
+- **New entrants**: services can be added mid-simulation; agents begin evaluating them immediately the following month
 
 See **How It Works** in the simulation nav for the full model equations and interactive charts.
 
