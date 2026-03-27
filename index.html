@@ -51,7 +51,6 @@
             </div>
         </div>
         <div class="flex items-center space-x-3 sm:space-x-6 text-sm">
-            <div id="monthDisplay" class="font-mono text-gray-400">Month: 0 / 48</div>
             <button id="runBtn" class="bg-netflix-red px-6 py-2 rounded font-bold hover:bg-red-700 transition">Run Simulation</button>
             <button id="resetBtn" class="border border-gray-600 px-4 py-2 rounded font-bold hover:bg-gray-800 transition hidden sm:block" title="Restart with current settings">Restart</button>
             <button id="resetParamsBtn" class="border border-orange-900/50 px-4 py-2 rounded font-bold text-orange-600 hover:bg-orange-950/30 hover:text-orange-300 transition text-xs hidden md:block" title="Reset to random service values">Randomize</button>
@@ -104,7 +103,10 @@
         <!-- Pause Timeline Configurator -->
         <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray">
             <div class="flex justify-between items-center mb-2">
-                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Pause Points</h3>
+                <div class="flex items-center gap-3">
+                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Pause Points</h3>
+                    <div id="monthDisplay" class="font-mono text-xs text-gray-500">Month 0 / 48</div>
+                </div>
                 <span class="text-[10px] text-gray-500">Click the timeline to add a pause. Click a marker to remove it.</span>
             </div>
             <div class="flex items-start gap-2">
@@ -144,8 +146,20 @@
 
         <!-- Population Grid -->
         <div class="bg-netflix-dark p-6 rounded-lg border border-netflix-gray">
-            <h3 class="text-sm font-bold mb-4 text-gray-400 uppercase tracking-widest">All 1,000 Simulated Viewers — click any dot</h3>
-            <div id="agentGrid" class="agent-grid"></div>
+            <h3 class="text-sm font-bold mb-3 text-gray-400 uppercase tracking-widest">All 1,000 Simulated Viewers — click any dot</h3>
+            <div class="flex flex-wrap gap-1.5 mb-2 items-center">
+                <span class="text-[10px] text-gray-600 uppercase tracking-widest mr-1">Sort by:</span>
+                <button onclick="setDotSort('none')" id="dsort-none" class="dsort-btn px-2 py-0.5 rounded text-[10px] border border-gray-700 text-gray-400 bg-transparent hover:border-gray-500 transition-colors">Default</button>
+                <button onclick="setDotSort('age')" id="dsort-age" class="dsort-btn px-2 py-0.5 rounded text-[10px] border border-gray-700 text-gray-400 bg-transparent hover:border-gray-500 transition-colors">Age</button>
+                <button onclick="setDotSort('genre')" id="dsort-genre" class="dsort-btn px-2 py-0.5 rounded text-[10px] border border-gray-700 text-gray-400 bg-transparent hover:border-gray-500 transition-colors">Genre</button>
+                <button onclick="setDotSort('income')" id="dsort-income" class="dsort-btn px-2 py-0.5 rounded text-[10px] border border-gray-700 text-gray-400 bg-transparent hover:border-gray-500 transition-colors">Income</button>
+                <button onclick="setDotSort('sensitivity')" id="dsort-sensitivity" class="dsort-btn px-2 py-0.5 rounded text-[10px] border border-gray-700 text-gray-400 bg-transparent hover:border-gray-500 transition-colors">Price Sensitivity</button>
+                <button onclick="setDotSort('subs')" id="dsort-subs" class="dsort-btn px-2 py-0.5 rounded text-[10px] border border-gray-700 text-gray-400 bg-transparent hover:border-gray-500 transition-colors">Subscriptions</button>
+            </div>
+            <div class="flex gap-1.5">
+                <div id="dotSortOverlay" class="w-14 flex-shrink-0 self-stretch rounded overflow-hidden hidden"></div>
+                <div id="agentGrid" class="agent-grid flex-1 min-w-0"></div>
+            </div>
             <div class="mt-4 flex flex-wrap gap-4 text-xs text-gray-400">
                 <div class="flex items-center"><div class="w-3 h-3 rounded-full bg-gray-700 mr-2"></div>No subscription</div>
                 <div id="legendDots" class="flex flex-wrap gap-4"></div>
@@ -351,6 +365,7 @@ let pauseLines = [];          // months where pauses were recorded for vertical 
 let scheduledPauses = [];     // [{month, title, body, steps}] from active scenario
 let lastPauseParams = null;   // snapshot at last pause (or sim start), for diffing
 let lastAgentSnapshot = null; // agent subscription snapshot at last pause, for Sankey
+let dotSortKey = 'none';     // sort order for the agent dot grid
 let lastServicesMeta = null;  // service {id,name,color} at last pause, for Sankey labels
 let highlightSubCount = -1;   // -1 = none; 0/1/2/3 = highlight that sub-count tier
 let insightCharts = {};
@@ -734,10 +749,123 @@ function removeServiceById(id) {
 }
 
 // ── Grid ───────────────────────────────────────────────────────────────────
+
+const AGE_ORDER = {'Gen Z': 0, 'Millennial': 1, 'Gen X': 2, 'Boomer': 3};
+
+function getSortedAgents() {
+    if (dotSortKey === 'none') return agents;
+    const sorted = [...agents];
+    switch (dotSortKey) {
+        case 'age':         sorted.sort((a, b) => AGE_ORDER[a.ageSegment] - AGE_ORDER[b.ageSegment]); break;
+        case 'genre':       sorted.sort((a, b) => GENRES.indexOf(a.preference) - GENRES.indexOf(b.preference)); break;
+        case 'income':      sorted.sort((a, b) => a.incomeSegment - b.incomeSegment); break;
+        case 'sensitivity': sorted.sort((a, b) => a.priceSensitivity - b.priceSensitivity); break;
+        case 'subs':        sorted.sort((a, b) => a.subscriptions.length - b.subscriptions.length); break;
+    }
+    return sorted;
+}
+
+function setDotSort(key) {
+    dotSortKey = key;
+    document.querySelectorAll('.dsort-btn').forEach(b => {
+        b.classList.remove('border-yellow-600', 'text-yellow-400', 'bg-yellow-900/20');
+        b.classList.add('border-gray-700', 'text-gray-400');
+    });
+    const active = document.getElementById(`dsort-${key}`);
+    if (active) {
+        active.classList.remove('border-gray-700', 'text-gray-400');
+        active.classList.add('border-yellow-600', 'text-yellow-400', 'bg-yellow-900/20');
+    }
+    renderGrid();
+}
+
+function renderDotSortOverlay() {
+    const el = document.getElementById('dotSortOverlay');
+    el.innerHTML = '';
+
+    if (dotSortKey === 'none' || !agents.length) {
+        el.classList.add('hidden');
+        return;
+    }
+    el.classList.remove('hidden');
+
+    // Vertical strip: segments flow top-to-bottom, matching how rows fill the grid
+    el.style.display = 'flex';
+    el.style.flexDirection = 'column';
+
+    if (dotSortKey === 'income') {
+        el.innerHTML = `
+            <div style="flex:1;background:linear-gradient(to bottom,#1e3a5f,#3b82f6,#93c5fd);display:flex;flex-direction:column;justify-content:space-between;padding:4px 0;">
+                <span style="writing-mode:vertical-lr;font-size:9px;color:rgba(255,255,255,0.7);font-weight:600;letter-spacing:0.05em;padding:2px;line-height:1;">Low</span>
+                <span style="writing-mode:vertical-lr;font-size:9px;color:rgba(255,255,255,0.7);font-weight:600;letter-spacing:0.05em;padding:2px;line-height:1;">High</span>
+            </div>`;
+        return;
+    }
+    if (dotSortKey === 'sensitivity') {
+        el.innerHTML = `
+            <div style="flex:1;background:linear-gradient(to bottom,#14532d,#16a34a,#86efac);display:flex;flex-direction:column;justify-content:space-between;padding:4px 0;">
+                <span style="writing-mode:vertical-lr;font-size:9px;color:rgba(255,255,255,0.7);font-weight:600;letter-spacing:0.05em;padding:2px;line-height:1;">Least</span>
+                <span style="writing-mode:vertical-lr;font-size:9px;color:rgba(255,255,255,0.7);font-weight:600;letter-spacing:0.05em;padding:2px;line-height:1;">Most</span>
+            </div>`;
+        return;
+    }
+
+    const sorted = getSortedAgents();
+    const configs = {
+        age: [
+            {key: 'Gen Z',      color: '#22d3ee'},
+            {key: 'Millennial', color: '#818cf8'},
+            {key: 'Gen X',      color: '#f472b6'},
+            {key: 'Boomer',     color: '#94a3b8'},
+        ],
+        genre: GENRES.map((g, i) => ({
+            key: g,
+            color: ['#f97316','#22c55e','#eab308','#ec4899','#6366f1'][i],
+        })),
+        subs: [
+            {key: 0, label: '0',  color: '#444'},
+            {key: 1, label: '1',  color: '#E50914'},
+            {key: 2, label: '2',  color: '#0095FF'},
+            {key: 3, label: '3+', color: '#a855f7'},
+        ],
+    };
+    const groups = configs[dotSortKey];
+    if (!groups) return;
+
+    const keyFn = dotSortKey === 'subs'
+        ? a => a.subscriptions.length
+        : dotSortKey === 'age'
+            ? a => a.ageSegment
+            : a => a.preference;
+
+    const counts = {};
+    groups.forEach(g => counts[g.key] = 0);
+    sorted.forEach(a => { const k = keyFn(a); if (counts[k] !== undefined) counts[k]++; });
+
+    // Grid is ~200px tall for 1000 agents; each agent ≈ 0.2px. Show label if segment ≥ 30 agents.
+    const LABEL_THRESHOLD = 30;
+    groups.forEach(g => {
+        const n = counts[g.key];
+        if (!n) return;
+        const label = g.label ?? g.key;
+        const seg = document.createElement('div');
+        seg.style.cssText = `flex:${n};background:${g.color};opacity:0.85;min-height:2px;overflow:hidden;display:flex;align-items:center;justify-content:center;`;
+        seg.title = `${label}: ${n} agents`;
+        if (n >= LABEL_THRESHOLD) {
+            const txt = document.createElement('span');
+            txt.style.cssText = `writing-mode:vertical-lr;font-size:9px;color:rgba(255,255,255,0.85);font-weight:700;letter-spacing:0.04em;line-height:1;white-space:nowrap;overflow:hidden;`;
+            txt.textContent = label;
+            seg.appendChild(txt);
+        }
+        el.appendChild(seg);
+    });
+}
+
 function renderGrid() {
+    renderDotSortOverlay();
     const grid = document.getElementById('agentGrid');
     grid.innerHTML = '';
-    agents.forEach(agent => {
+    getSortedAgents().forEach(agent => {
         const dot = document.createElement('div');
         dot.className = 'agent-dot';
         dot.id = `agent-${agent.id}`;
@@ -1025,11 +1153,12 @@ function step() {
     updateChart();
     updateStats();
     if (currentMonth % 3 === 0) renderServiceProfiles();
+    if (currentMonth % 3 === 0 && dotSortKey === 'subs') renderGrid();
     renderCorrMatrix();
 }
 
 function updateUI() {
-    document.getElementById('monthDisplay').innerText = `Month: ${currentMonth} / ${MONTHS}`;
+    document.getElementById('monthDisplay').innerText = `Month ${currentMonth} / ${MONTHS}`;
     renderPauseTimeline();
 }
 
