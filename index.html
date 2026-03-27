@@ -99,6 +99,18 @@
                 </div>
             </section>
 
+            <!-- Simulation Duration -->
+            <section class="bg-netflix-dark p-5 rounded-lg border border-netflix-gray">
+                <h2 class="text-sm font-bold mb-3 text-gray-300 uppercase tracking-widest">Simulation Length</h2>
+                <div class="flex justify-between text-xs mb-1">
+                    <label class="text-gray-400">Duration</label>
+                    <span id="durationVal" class="text-white">4 years (48 months)</span>
+                </div>
+                <input type="range" id="durationSlider" min="1" max="20" step="1" value="4" class="w-full accent-red-600">
+                <div class="flex justify-between text-[10px] text-gray-600 mt-1"><span>1 yr</span><span>20 yrs</span></div>
+                <p class="text-[10px] text-gray-500 mt-2">Changes take effect on next Restart.</p>
+            </section>
+
             <!-- Audience Genre Mix -->
             <section class="bg-netflix-dark p-5 rounded-lg border border-netflix-gray">
                 <h2 class="text-sm font-bold mb-1 text-gray-300 uppercase tracking-widest">Audience Genre Mix</h2>
@@ -152,6 +164,21 @@
                 </div>
             </div>
 
+            <!-- Pause Timeline Configurator -->
+            <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Pause Points</h3>
+                    <span class="text-[10px] text-gray-500">Click the timeline to add a pause. Click a marker to remove it.</span>
+                </div>
+                <div class="flex items-start gap-2">
+                    <span class="text-[9px] text-gray-600 uppercase tracking-widest mt-1 whitespace-nowrap">Months →</span>
+                    <div id="pauseTimeline" class="relative h-8 flex-1 cursor-pointer select-none" title="Click to add a pause at that month"></div>
+                </div>
+            </div>
+
+            <!-- Pause Summary Cards -->
+            <div id="pauseCards" class="space-y-2"></div>
+
             <!-- Main Chart -->
             <div class="bg-netflix-dark p-6 rounded-lg border border-netflix-gray" style="height: 280px;">
                 <div class="flex justify-between items-center mb-2">
@@ -194,22 +221,6 @@
         </div>
     </main>
 
-    <!-- Pause Notification Modal -->
-    <div id="pauseModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[200] hidden">
-        <div class="bg-netflix-dark border-2 border-yellow-500 p-8 rounded-xl max-w-lg w-full mx-4">
-            <div class="flex items-center gap-3 mb-4">
-                <div class="w-10 h-10 rounded-full bg-yellow-500/20 flex items-center justify-center">
-                    <svg class="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-                    </svg>
-                </div>
-                <h2 id="pauseModalTitle" class="text-xl font-bold text-yellow-400">Scenario Checkpoint</h2>
-            </div>
-            <p id="pauseModalBody" class="text-gray-300 text-sm mb-5 leading-relaxed"></p>
-            <div id="pauseModalSteps" class="bg-black/40 rounded p-4 mb-5 space-y-2 text-sm"></div>
-            <button onclick="dismissPauseModal()" class="w-full bg-yellow-500 text-black font-bold py-2 rounded hover:bg-yellow-400 transition">Got it — I'll adjust the settings now</button>
-        </div>
-    </div>
 
     <!-- Generic Modal (How It Works / Scenarios) -->
     <div id="genericModal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[100] hidden">
@@ -239,7 +250,7 @@
 <script>
 // ── Constants ──────────────────────────────────────────────────────────────
 const AGENT_COUNT = 1000;
-const MONTHS = 48;
+let MONTHS = 48; // configurable; 1–20 years × 12
 const AGE_SEGMENTS = ['Gen Z', 'Millennial', 'Gen X', 'Boomer'];
 const GENRES = ['Action', 'Drama', 'Comedy', 'Kids', 'Sci-Fi'];
 const SERVICE_COLORS = ['#E50914', '#0095FF', '#22C55E', '#FFCC00', '#9333EA'];
@@ -253,6 +264,7 @@ let chart = null, distChart = null;
 let history = [];
 let pauseLines = [];          // months where pauses were recorded for vertical lines
 let scheduledPauses = [];     // [{month, title, body, steps}] from active scenario
+let lastPauseParams = null;   // snapshot at last pause (or sim start), for diffing
 let highlightSubCount = -1;   // -1 = none; 0/1/2/3 = highlight that sub-count tier
 let insightCharts = {};
 
@@ -375,6 +387,7 @@ class Agent {
 class Service {
     constructor(id, name, color) {
         this.id = id; this.name = name; this.color = color;
+        this.joinedMonth = 0; // month the service entered the market (0 = from the start)
         this.price = 10 + Math.random() * 10;
         this.quality = 5 + Math.random() * 5;
         this.contentVolume = 5 + Math.random() * 5;
@@ -416,32 +429,44 @@ function initSim(overrides) {
         if (overrides.cpi !== undefined) document.getElementById('cpi').value = overrides.cpi;
         if (overrides.kCount !== undefined) document.getElementById('kCount').value = overrides.kCount;
         if (overrides.genreWeights !== undefined) genreWeights = { ...overrides.genreWeights };
+        if (overrides.durationYears !== undefined) {
+            document.getElementById('durationSlider').value = overrides.durationYears;
+            const y = overrides.durationYears;
+            document.getElementById('durationVal').innerText = `${y} year${y !== 1 ? 's' : ''} (${y * 12} months)`;
+        }
     }
     syncSliderLabels();
 
     agents = Array.from({ length: AGENT_COUNT }, (_, i) => new Agent(i));
     const k = parseInt(document.getElementById('kCount').value);
-    const names = ['NetStream', 'CineMax', 'GlowTV', 'EdgeVideo', 'PrimeWatch'];
     services = [];
     if (overrides?.services) {
         overrides.services.forEach((cfg, i) => {
-            const s = new Service(i, names[i], SERVICE_COLORS[i]);
+            const s = new Service(i, NAMES[i], SERVICE_COLORS[i]);
             Object.assign(s, cfg);
             services.push(s);
         });
     } else {
-        for (let i = 0; i < k; i++) services.push(new Service(i, names[i], SERVICE_COLORS[i]));
+        for (let i = 0; i < k; i++) services.push(new Service(i, NAMES[i], SERVICE_COLORS[i]));
     }
+
+    // Update simulation duration from slider (unless scenario overrides it)
+    MONTHS = parseInt(document.getElementById('durationSlider').value) * 12;
 
     currentMonth = 0;
     history = [];
     pauseLines = [];
+    userPauses = [];
     scheduledPauses = overrides?.pauseEvents ? [...overrides.pauseEvents] : [];
+    // Show scenario pause months on the timeline as if user-placed
+    if (overrides?.pauseEvents) userPauses = overrides.pauseEvents.map(p => p.month);
     isRunning = false;
     highlightSubCount = -1;
     if (simInterval) clearInterval(simInterval);
     document.getElementById('runBtn').innerText = 'Run Simulation';
     document.getElementById('clearHighlightBtn').classList.add('hidden');
+    document.getElementById('pauseCards').innerHTML = '';
+    lastPauseParams = null; // will be set after services are ready
 
     renderGenreSliders();
     renderServices();
@@ -451,6 +476,8 @@ function initSim(overrides) {
     updateStats();
     updateUI();
     renderServiceProfiles();
+    renderPauseTimeline();
+    lastPauseParams = snapshotParams(); // baseline for first checkpoint diff
 }
 
 // ── Genre ──────────────────────────────────────────────────────────────────
@@ -535,6 +562,49 @@ function renderServices() {
             }
         });
     });
+}
+
+// ── Live service add/remove (mid-sim) ──────────────────────────────────────
+const NAMES = ['NetStream', 'CineMax', 'GlowTV', 'EdgeVideo', 'PrimeWatch'];
+
+function addService(cfg) {
+    if (services.length >= 5) return;
+    const newId = services.length === 0 ? 0 : Math.max(...services.map(s => s.id)) + 1;
+    const s = new Service(newId, NAMES[Math.min(newId, NAMES.length - 1)], SERVICE_COLORS[Math.min(newId, SERVICE_COLORS.length - 1)]);
+    s.joinedMonth = currentMonth + 1;
+    if (cfg) Object.assign(s, cfg);
+    services.push(s);
+    if (chart) {
+        // Fill nulls for months 0..currentMonth, undefined (future) beyond
+        const pastNulls = Array(currentMonth + 2).fill(null); // indices 0..currentMonth
+        chart.data.datasets.push({
+            label: s.name, data: pastNulls,
+            borderColor: s.color, backgroundColor: s.color + '18',
+            fill: true, tension: 0.4, pointRadius: 0
+        });
+        chart.update('none');
+    }
+    document.getElementById('kCount').value = services.length;
+    renderServices();
+    renderServiceProfiles();
+}
+
+function removeService() {
+    if (services.length <= 1) return;
+    const s = services[services.length - 1];
+    agents.forEach(a => {
+        a.subscriptions = a.subscriptions.filter(id => id !== s.id);
+        delete a.monthsSubscribed[s.id];
+    });
+    services.pop();
+    if (chart && chart.data.datasets.length > services.length) {
+        chart.data.datasets.splice(services.length);
+        chart.update('none');
+    }
+    document.getElementById('kCount').value = services.length;
+    renderServices();
+    renderGrid();
+    renderServiceProfiles();
 }
 
 // ── Grid ───────────────────────────────────────────────────────────────────
@@ -719,6 +789,17 @@ function step() {
         isRunning = false;
         clearInterval(simInterval);
         document.getElementById('runBtn').innerText = 'Simulation Finished';
+        pauseLines.push(currentMonth);
+        if (chart) chart.update('none');
+        renderPauseTimeline();
+        const finalEvent = {
+            month: currentMonth,
+            title: 'Simulation Complete',
+            stats: buildPauseStats(),
+            params: snapshotParams(),
+            steps: []
+        };
+        showPauseCard(finalEvent);
         return;
     }
 
@@ -731,7 +812,11 @@ function step() {
         document.getElementById('runBtn').innerText = 'Resume Simulation';
         pauseLines.push(currentMonth + 1);
         if (chart) chart.update('none');
-        showPauseModal(pending);
+        renderPauseTimeline();
+        // Build a stats snapshot before the advance happens
+        pending.stats = buildPauseStats();
+        pending.params = snapshotParams();
+        showPauseCard(pending);
         return;
     }
 
@@ -757,11 +842,17 @@ function step() {
 
 function updateUI() {
     document.getElementById('monthDisplay').innerText = `Month: ${currentMonth} / ${MONTHS}`;
+    renderPauseTimeline();
 }
 
 function updateChart() {
     services.forEach((s, i) => {
-        chart.data.datasets[i].data = [0, ...history.map(h => h.counts[s.id])];
+        if (!chart.data.datasets[i]) return;
+        const data = [s.joinedMonth === 0 ? 0 : null];
+        history.forEach(h => {
+            data.push(h.month < s.joinedMonth ? null : (h.counts[s.id] ?? 0));
+        });
+        chart.data.datasets[i].data = data;
     });
     chart.update('none');
 }
@@ -810,19 +901,246 @@ function updateStats() {
     updateMacroDisplay();
 }
 
-// ── Pause modal ────────────────────────────────────────────────────────────
-function showPauseModal(event) {
-    document.getElementById('pauseModalTitle').innerText = event.title;
-    document.getElementById('pauseModalBody').innerText = event.body;
-    const stepsEl = document.getElementById('pauseModalSteps');
-    stepsEl.innerHTML = event.steps.map((s, i) =>
-        `<div class="flex gap-3"><span class="text-yellow-400 font-bold">${i+1}.</span><span class="text-gray-300">${s}</span></div>`
-    ).join('');
-    document.getElementById('pauseModal').classList.remove('hidden');
+// ── Pause cards ────────────────────────────────────────────────────────────
+function fmtParamVal(key, val) {
+    if (key === 'price') return `$${val.toFixed(2)}`;
+    if (key === 'quality') return `Quality ${val.toFixed(1)}`;
+    if (key === 'volume') return `Volume ${val.toFixed(1)}`;
+    if (key === 'genre') return val;
+    if (key === 'incomeGrowth') return `${val > 0 ? '+' : ''}${val.toFixed(1)}%`;
+    if (key === 'inflation') return `${val.toFixed(1)}%`;
+    if (key === 'M') return val.toFixed(3);
+    if (key === 'genreWeight') return val.toFixed(1);
+    return val;
 }
 
-function dismissPauseModal() {
-    document.getElementById('pauseModal').classList.add('hidden');
+function buildParamRows(curr, prev) {
+    const econKeys = ['incomeGrowth', 'inflation'];
+    const svcKeys  = ['price', 'quality', 'volume', 'genre'];
+    const econLabels = { incomeGrowth: 'Income growth', inflation: 'Inflation' };
+    const svcLabels  = { price: 'Price', quality: 'Quality', volume: 'Volume', genre: 'Genre focus' };
+    const rows = [];
+
+    econKeys.forEach(k => {
+        const c = curr.economy[k], p = prev ? prev.economy[k] : null;
+        const changed = p !== null && c !== p;
+        rows.push({ label: econLabels[k], from: p !== null ? fmtParamVal(k, p) : null, to: fmtParamVal(k, c), changed });
+    });
+
+    // Genre audience weights
+    if (curr.genres) {
+        GENRES.forEach(g => {
+            const c = curr.genres[g] ?? 0, p = prev?.genres ? (prev.genres[g] ?? 0) : null;
+            const changed = p !== null && Math.abs(c - p) >= 0.05;
+            rows.push({ label: `Audience: ${g}`, from: p !== null ? fmtParamVal('genreWeight', p) : null, to: fmtParamVal('genreWeight', c), changed });
+        });
+    }
+
+    curr.services.forEach((svc, i) => {
+        const psvc = prev ? prev.services[i] : null;
+        svcKeys.forEach(k => {
+            const c = svc[k], p = psvc ? psvc[k] : null;
+            const changed = p !== null && c !== p;
+            rows.push({ label: `${svc.name} ${svcLabels[k]}`, color: svc.color, from: p !== null ? fmtParamVal(k, p) : null, to: fmtParamVal(k, c), changed });
+        });
+    });
+
+    return { changed: rows.filter(r => r.changed), all: rows };
+}
+
+function togglePauseCardParams(cardId) {
+    const card = document.getElementById(cardId);
+    if (!card) return;
+    const allEl  = card.querySelector('.params-all');
+    const chev   = card.querySelector('.params-chevron');
+    if (!allEl) return;
+    const open = allEl.style.display !== 'none';
+    allEl.style.display = open ? 'none' : '';
+    if (chev) chev.style.transform = open ? '' : 'rotate(90deg)';
+}
+
+function togglePauseCardBody(cardId) {
+    const card = document.getElementById(cardId);
+    if (!card) return;
+    const body = card.querySelector('.card-body');
+    const chevron = card.querySelector('.chevron');
+    if (!body) return;
+    const hidden = body.style.display === 'none';
+    body.style.display = hidden ? '' : 'none';
+    if (chevron) chevron.style.transform = hidden ? '' : 'rotate(-90deg)';
+}
+
+function showPauseCard(event) {
+    const container = document.getElementById('pauseCards');
+    const id = 'pc-' + event.month;
+    if (document.getElementById(id)) return;
+
+    const stepsHtml = event.steps && event.steps.length
+        ? `<div class="mt-2 space-y-1 text-xs text-gray-400">${event.steps.map((s, i) =>
+            `<div class="flex gap-2"><span class="text-yellow-400 font-bold">${i+1}.</span><span>${s}</span></div>`
+          ).join('')}</div>`
+        : '';
+
+    const statsHtml = event.stats
+        ? `<div class="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">${event.stats.map(st =>
+            `<div class="bg-black/30 rounded p-2"><div class="text-[10px] text-gray-500">${st.label}</div><div class="text-sm font-bold ${st.color || 'text-white'}">${st.value}</div></div>`
+          ).join('')}</div>`
+        : '';
+
+    let paramsHtml = '';
+    if (event.params) {
+        const { changed, all } = buildParamRows(event.params, lastPauseParams);
+        const rowHtml = rows => rows.map(r =>
+            `<div class="flex items-center justify-between text-[11px] py-0.5 border-b border-gray-800">
+                <span class="${r.color ? '' : 'text-gray-400'}" ${r.color ? `style="color:${r.color}"` : ''}>${r.label}</span>
+                <span class="${r.changed ? 'text-yellow-300 font-semibold' : 'text-gray-500'}">
+                    ${r.changed && r.from !== null ? `<span class="line-through text-gray-600 mr-1">${r.from}</span>` : ''}${r.to}
+                </span>
+            </div>`
+        ).join('');
+
+        const noChanges = changed.length === 0;
+        const summaryLabel = noChanges ? 'No changes from last checkpoint' : `${changed.length} setting${changed.length > 1 ? 's' : ''} changed`;
+        paramsHtml = `
+            <div class="mt-3 border-t border-gray-700 pt-2">
+                <div class="params-changed">${noChanges ? '' : rowHtml(changed)}</div>
+                <div class="flex items-center gap-1 cursor-pointer select-none mt-1 text-[10px] text-gray-600 hover:text-gray-400 transition" onclick="togglePauseCardParams('${id}')">
+                    <svg class="params-chevron w-3 h-3 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    <span>${summaryLabel} — show all</span>
+                </div>
+                <div class="params-all mt-1" style="display:none">${rowHtml(all)}</div>
+            </div>`;
+    }
+
+    const card = document.createElement('div');
+    card.id = id;
+    card.className = 'bg-netflix-dark border border-yellow-500/50 rounded-lg text-sm overflow-hidden';
+    card.innerHTML = `
+        <div class="flex justify-between items-center px-4 py-3 cursor-pointer select-none hover:bg-white/5 transition" onclick="togglePauseCardBody('${id}')">
+            <div class="flex items-center gap-2">
+                <span class="text-yellow-400 font-bold text-xs uppercase tracking-widest">⏸ Month ${event.month}</span>
+                <span class="text-white font-semibold">${event.title}</span>
+            </div>
+            <svg class="chevron w-4 h-4 text-gray-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </div>
+        <div class="card-body px-4 pb-4">
+            ${event.body ? `<p class="mt-1 text-gray-400 text-xs leading-relaxed">${event.body}</p>` : ''}
+            ${stepsHtml}
+            ${statsHtml}
+            ${paramsHtml}
+        </div>
+    `;
+    container.prepend(card);
+
+    // Update the baseline for next checkpoint diff
+    lastPauseParams = event.params;
+}
+
+function snapshotParams() {
+    const w = parseFloat(document.getElementById('walletPressure').value);
+    const c = parseFloat(document.getElementById('cpi').value);
+    const M = 1 + (-w * 0.10) + (c * 0.04);
+    return {
+        economy: { incomeGrowth: w, inflation: c, M },
+        genres: { ...genreWeights },
+        services: services.map(s => ({
+            name: s.name, color: s.color,
+            price: Math.round(s.price * 100) / 100,
+            quality: Math.round(s.quality * 10) / 10,
+            volume: Math.round(s.contentVolume * 10) / 10,
+            genre: s.genreFocus
+        }))
+    };
+}
+
+function buildPauseStats() {
+    const stats = [];
+    services.forEach(s => {
+        // Service not yet active (joins next month) — show as "entering market"
+        if (s.joinedMonth > currentMonth) {
+            stats.push({ label: s.name, value: 'entering market', color: 'text-yellow-400' });
+            return;
+        }
+        const now = history.length ? (history[history.length - 1].counts[s.id] ?? 0) : 0;
+        const prevPausedMonth = pauseLines.length > 1 ? pauseLines[pauseLines.length - 2] : 0;
+        // Only diff against a prior month if this service was already active then
+        const prevEntry = (prevPausedMonth >= s.joinedMonth) ? history.find(h => h.month === prevPausedMonth) : null;
+        const prev = prevEntry ? (prevEntry.counts[s.id] ?? null) : null;
+        const delta = prev !== null ? now - prev : null;
+        const deltaStr = delta !== null ? (delta >= 0 ? `+${delta}` : `${delta}`) : '';
+        const color = delta === null ? 'text-white' : delta > 0 ? 'text-green-400' : delta < 0 ? 'text-red-400' : 'text-gray-400';
+        stats.push({ label: s.name, value: `${now}${deltaStr ? ' (' + deltaStr + ')' : ''}`, color });
+    });
+    return stats;
+}
+
+// ── Pause Timeline UI ──────────────────────────────────────────────────────
+// userPauses: months the user has manually added (not from scenarios)
+let userPauses = [];
+
+function renderPauseTimeline() {
+    const el = document.getElementById('pauseTimeline');
+    if (!el) return;
+    const total = MONTHS;
+    // Track line (the bar behind everything)
+    let html = `<div class="absolute inset-y-0 left-0 right-0 flex items-center"><div class="w-full h-1 bg-gray-700 rounded"></div></div>`;
+    // Year tick marks
+    for (let y = 1; y <= Math.floor(total / 12); y++) {
+        const pct = (y * 12 / total) * 100;
+        html += `<div class="absolute top-0 flex flex-col items-center" style="left:${pct}%;transform:translateX(-50%)">
+            <div class="w-px h-2 bg-gray-600 mt-3"></div>
+            <span class="text-[8px] text-gray-600 mt-0.5">Yr ${y}</span>
+        </div>`;
+    }
+    // User-configured pauses (yellow) — stopPropagation prevents the timeline onclick from re-adding
+    userPauses.forEach(m => {
+        const pct = (m / total) * 100;
+        html += `<div class="absolute flex flex-col items-center cursor-pointer" style="left:${pct}%;transform:translateX(-50%)" title="Month ${m} — click to remove" onclick="event.stopPropagation();removeUserPause(${m})">
+            <div class="w-3 h-3 rounded-full bg-yellow-400 border-2 border-yellow-300 shadow mt-0.5 hover:bg-red-400 transition"></div>
+            <span class="text-[8px] text-yellow-400 mt-0.5">${m}</span>
+        </div>`;
+    });
+    // Scenario-derived pauses that have already fired (gray)
+    pauseLines.filter(m => !userPauses.includes(m)).forEach(m => {
+        const pct = (m / total) * 100;
+        html += `<div class="absolute flex flex-col items-center" style="left:${pct}%;transform:translateX(-50%)" title="Scenario pause at month ${m}" onclick="event.stopPropagation()">
+            <div class="w-3 h-3 rounded-full bg-gray-500 border border-gray-400 mt-0.5"></div>
+            <span class="text-[8px] text-gray-500 mt-0.5">${m}</span>
+        </div>`;
+    });
+    // Current month indicator (red)
+    if (currentMonth > 0) {
+        const pct = (currentMonth / total) * 100;
+        html += `<div class="absolute top-0 h-full flex items-center" style="left:${pct}%">
+            <div class="w-0.5 h-6 bg-netflix-red opacity-70 mt-1"></div>
+        </div>`;
+    }
+    el.innerHTML = html;
+}
+
+function handleTimelineClick(e) {
+    const el = document.getElementById('pauseTimeline');
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const month = Math.max(1, Math.min(MONTHS, Math.round(frac * MONTHS)));
+    if (userPauses.includes(month)) {
+        removeUserPause(month);
+    } else {
+        userPauses.push(month);
+        userPauses.sort((a, b) => a - b);
+        // Add to scheduledPauses if it hasn't fired yet
+        if (month > currentMonth && !scheduledPauses.find(p => p.month === month)) {
+            scheduledPauses.push({ month, title: 'Checkpoint', body: '', steps: [] });
+        }
+        renderPauseTimeline();
+    }
+}
+
+function removeUserPause(month) {
+    userPauses = userPauses.filter(m => m !== month);
+    scheduledPauses = scheduledPauses.filter(p => p.month !== month);
+    renderPauseTimeline();
 }
 
 // ── Agent detail modal ─────────────────────────────────────────────────────
@@ -1132,6 +1450,48 @@ function getScenarios() {
                 }]
             }
         }
+        ,{
+            title: 'Scenario D — New Market Entrant',
+            tag: 'Market Entry',
+            description: 'Two services dominate the market — but a large audience segment has no service that matches their taste. The simulation pauses at month 12 to ask: is there a gap to fill?',
+            highlights: [
+                'NetStream targets Drama viewers; CineMax targets Action fans',
+                'Kids content viewers are the largest audience segment — but no one serves them',
+                'Auto-pauses at month 12: add a third service and target the gap',
+                'Watch whether a well-positioned entrant can overtake established incumbents'
+            ],
+            params: {
+                kCount: 2, walletPressure: 1, cpi: 2,
+                genreWeights: { Action: 1.5, Drama: 2, Comedy: 1, Kids: 4, 'Sci-Fi': 0.5 },
+                services: [
+                    { price: 12, quality: 7, contentVolume: 7, genreFocus: 'Drama' },
+                    { price: 10, quality: 6, contentVolume: 8, genreFocus: 'Action' }
+                ],
+                pauseEvents: [
+                    {
+                        month: 12,
+                        title: 'Spot the Gap',
+                        body: 'Look at the Audience Genre Mix on the left: Kids is by far the largest audience, but neither service targets it. A new competitor is considering entering the market.',
+                        steps: [
+                            'Change "Number of Services" to 3 in the sidebar — this adds GlowTV to the market',
+                            'Set GlowTV\'s Genre Focus to "Kids" and give it a competitive price (~$11) and solid quality (~7)',
+                            'Resume and watch: does the new entrant grow? How quickly?',
+                            'Try the same experiment but with a weaker entrant (lower quality). What\'s the minimum quality needed to succeed?'
+                        ]
+                    },
+                    {
+                        month: 36,
+                        title: 'Three-Way Market Check',
+                        body: 'Three services have now coexisted for over two years. How has the competitive landscape settled?',
+                        steps: [
+                            'Compare subscriber counts: did the entrant catch the incumbents, or plateau?',
+                            'Check "Who Subscribes" — is GlowTV pulling mostly Kids-preference viewers, or broader?',
+                            'Try raising GlowTV\'s price. At what price do subscribers start leaving?'
+                        ]
+                    }
+                ]
+            }
+        }
     ];
 }
 
@@ -1268,7 +1628,28 @@ document.getElementById('runBtn').onclick = () => {
 
 document.getElementById('resetBtn').onclick = () => initSim({ keepParams: true });
 document.getElementById('resetParamsBtn').onclick = () => initSim();
-document.getElementById('kCount').onchange = () => initSim({ keepParams: true });
+
+document.getElementById('durationSlider').oninput = e => {
+    const yrs = parseInt(e.target.value);
+    document.getElementById('durationVal').innerText = `${yrs} year${yrs !== 1 ? 's' : ''} (${yrs * 12} months)`;
+    // Immediately apply: update MONTHS, reinit chart x-axis, redraw timeline
+    MONTHS = yrs * 12;
+    initChart();
+    updateChart();
+    renderPauseTimeline();
+};
+
+document.getElementById('pauseTimeline').onclick = handleTimelineClick;
+document.getElementById('kCount').onchange = e => {
+    const newK = parseInt(e.target.value);
+    if (currentMonth > 0) {
+        // Mid-sim: add/remove live without resetting
+        while (services.length < newK) addService();
+        while (services.length > newK) removeService();
+    } else {
+        initSim({ keepParams: true });
+    }
+};
 
 document.getElementById('walletPressure').oninput = e => {
     document.getElementById('walletVal').innerText = (parseFloat(e.target.value) > 0 ? '+' : '') + parseFloat(e.target.value).toFixed(1) + '%';
@@ -1302,5 +1683,8 @@ function toggleBanner() {
 // ── Boot ───────────────────────────────────────────────────────────────────
 initSim();
 </script>
+<footer class="text-center text-xs text-gray-500 py-3 border-t border-gray-800 mt-4">
+  Open source on <a href="https://github.com/nesanders/streamsim" target="_blank" class="underline hover:text-gray-300">github.com/nesanders/streamsim</a>
+</footer>
 </body>
 </html>
