@@ -45,12 +45,30 @@ M = 1 + (−IncomeGrowth × 0.10) + (Inflation × 0.04)
 
 **Subscribe probability** (per month, per unsubscribed service):
 - U > 5 → 40% base; U 3–5 → 10%; U < 3 → 2%
-- Multiplied by stacking discount: 1st sub ×1.0, 2nd ×0.5, 3rd ×0.2
+- Multiplied by economy-adjusted stacking discount:
+  - Base discounts: 1st ×1.0, 2nd ×0.65, 3rd ×0.40 (calibrated for ~40% holding 3 subs in neutral economy after 4 years)
+  - Economy modifier: `max(0.1, 2 − M)` — boom (M=0.5) → ×1.5; neutral → ×1.0; recession (M=1.9) → ×0.1
+  - Final decay capped at 1.0: `min(1.0, baseDiscount × modifier)`
 
 **Churn probability** (per month, per active subscription):
 - Quality ≥ 7 → `0.01 + max(0, M−1) × 0.06` (sticky but not recession-proof)
 - Quality 4–7 → utility-based: U < 2 → 15%; U < 4 → 5%; else 2%
 - Quality < 4 → 35% flat
+- **Age modifier applied after quality/economy calculation**: `churnProb × ageFactor`, capped at 0.95
+
+  - Gen Z ×1.30 (hops between services)
+  - Millennial ×1.00 (baseline)
+  - Gen X ×0.85
+  - Boomer ×0.70 (stickiest)
+
+**Age effects on genre preference:**
+- Genre assigned via `weightedGenreForAge(ageSegment)`, which multiplies global `genreWeights` by `AGE_GENRE_MULT[age][genre]`
+- Gen Z: Sci-Fi ×2.0, Action ×1.5, Kids ×0.2
+- Millennial: Drama ×1.4, Comedy ×1.4
+- Gen X: Drama ×1.8
+- Boomer: Kids ×1.6, Drama ×1.4, Sci-Fi ×0.4
+- Global genre sliders still work; age multipliers modulate on top of them
+- Applied at init and when genre sliders are changed
 
 ### Agent dot colors
 
