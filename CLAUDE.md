@@ -97,6 +97,65 @@ M = 1 + (−IncomeGrowth × 0.10) + (Inflation × 0.04)
 | `getScenarios()` | Returns the four scenario config objects (A–D). Scenarios with `pauseEvents` arrays will auto-pause at the specified months. |
 | `styleDot(dot, agent)` | Sets background gradient and dimming on a single agent dot. |
 
+## Game Mode
+
+The sim has two modes toggled by pill buttons in the nav: **Simulation** and **Game**. `setMode(mode)` switches between them, toggling `body.game-mode` CSS class (which hides sim-specific controls via `.sim-only` and `body.game-mode #...` rules).
+
+### Game state
+
+| Variable | Purpose |
+|---|---|
+| `gameState` | Central object: `{active, scenario, phase, credits, creditsThisPeriod, playerServiceId, marketingBoostMonths, playerEntryMonth, pendingEvent, _bbEarned}` |
+| `GAME_SCENARIOS[]` | Array of scenario config objects. Each has `id, name, winTarget, goldTarget, silverTarget, bronzeTarget, startingCredits, foundingBudget, pauseInterval, activeDuration, preRunMonths, preRunSpeed, economy, competitors[], events[]`. |
+| `foundingConfig` | `{quality, volume, price, genre}` — player's service config during the founding modal. |
+| `gameState.phase` | `'idle' \| 'prerun' \| 'founding' \| 'playing' \| 'complete'` |
+
+### Founding budget
+
+- `foundingBudget = 14` (Disruption scenario)
+- Quality cost: `(val − 3) × 2` pts; Volume cost: `(val − 3) × 1` pt
+- Unspent points → `× 5` starting credits
+- Helpers: `foundingQualityCost(q)`, `foundingVolumeCost(v)`, `foundingBudgetUsed(q, v)`
+
+### Credit system
+
+Credits earned per step: `subscriberCount × price × 0.015`. Accumulated in `gameState.creditsThisPeriod`, displayed and reset each budget board pause.
+
+### Upgrade costs (budget board)
+
+| Upgrade | Cost |
+|---|---|
+| +1 Quality | 25¢ |
+| +1 Volume | 15¢ |
+| −$1 Price | 10¢ |
+| +$1 Price | free |
+| Marketing Burst (+2 utilityBonus for `pauseInterval` months) | 20¢ |
+| Genre Pivot | 30¢ |
+
+### Game flow
+
+1. `startGameScenario(id)` — initializes sim with competitor services, runs pre-run at `preRunSpeed` ms/step.
+2. After `preRunMonths`, founding modal opens → `launchPlayerService()` adds StreamCo as 5th service.
+3. `step()` calls `onGameStep()` each month (earn credits, decrement marketing boost, fire scenario events).
+4. Every `pauseInterval` months: `showBudgetBoard()` opens — player spends credits, then `closeBudgetBoard()` resumes.
+5. At `activeDuration` months after entry: `endGame()` → `showGameOver()`.
+6. Game over modal has Play Again (restarts scenario) and View Dashboard (closes modal, stays in game-complete phase) options.
+
+### `utilityBonus` field on `Service`
+
+`Service.utilityBonus` (default 0) is added to the utility score in both the churn and subscribe phases of `Agent.evaluate()`. Used by the marketing boost. Always reset to 0 when boost expires.
+
+### Game hooks in `step()`
+
+At the end of `step()`, after all normal UI updates, if `gameState.phase === 'playing'`:
+- calls `onGameStep()` (credits + events)
+- checks `activeMonths % pauseInterval === 0` to trigger budget board
+- checks `activeMonths >= activeDuration` to trigger end game
+
+### Scenarios structure
+
+Each scenario in `GAME_SCENARIOS[]` has an `events[]` array: `{month, targetName, stat, amount, message}`. `month` is **relative to player entry**, not absolute. Events fire once (marked `evt.fired = true`) inside `onGameStep()`.
+
 ## Keeping this file current
 
 **This file must be updated whenever the ABM changes.** That includes any modification to model equations, coefficients, probability rules, agent/service properties, key function signatures, or simulation state variables. Treat CLAUDE.md as a living spec, not a snapshot — if the code and this file disagree, fix this file as part of the same change.

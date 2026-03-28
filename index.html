@@ -2942,7 +2942,12 @@ function showBudgetBoard(savedEarned) {
             <div class="w-2 h-2 rounded-full flex-shrink-0" style="background:${c.color}"></div>
             <span class="text-gray-400 w-20 truncate">${c.name}</span>
             <span class="text-white font-mono w-8">${csubs}</span>
-            <span class="text-gray-600 text-[10px]">Q${c.quality.toFixed(0)} V${c.contentVolume.toFixed(0)} $${c.price.toFixed(0)} ${c.genreFocus}</span>
+            <span class="text-gray-600 text-[10px] flex items-center gap-1.5">
+                <abbr title="Content Quality (1–10): higher = lower cancel rate" class="no-underline border-b border-dotted border-gray-600 cursor-help">Q</abbr><span>${c.quality.toFixed(0)}</span>
+                <abbr title="Content Volume (1–10): higher = faster new sign-ups" class="no-underline border-b border-dotted border-gray-600 cursor-help">V</abbr><span>${c.contentVolume.toFixed(0)}</span>
+                <span>$${c.price.toFixed(0)}</span>
+                <span>${c.genreFocus}</span>
+            </span>
         </div>`;
     }).join('');
 
@@ -3145,14 +3150,21 @@ function showGameOver(finalSubs) {
         <div class="${isWin ? 'bg-green-900/20 border-green-900/40' : 'bg-red-900/20 border-red-900/40'} border rounded-lg p-3 mb-5 text-xs text-gray-400">
             <span class="${isWin ? 'text-green-400' : 'text-red-400'} font-bold">${isWin ? 'Tip for next run: ' : 'What to try: '}</span>${tipText}
         </div>
-        <div class="flex gap-3">
+        <div class="flex gap-3 flex-wrap">
             <button onclick="document.getElementById('gameOverModal').classList.add('hidden');startGameScenario('${sc.id}')"
                 class="flex-1 bg-purple-700 hover:bg-purple-600 transition text-white font-bold py-2.5 rounded-lg text-sm">
                 Play Again
             </button>
+            <button onclick="document.getElementById('gameOverModal').classList.add('hidden')"
+                class="flex-1 border border-gray-600 hover:bg-gray-800 transition text-gray-300 font-bold py-2.5 rounded-lg text-sm"
+                title="Close this panel and explore the full dashboard — charts, dot grid, service profiles">
+                View Dashboard
+            </button>
+        </div>
+        <div class="text-center mt-3">
             <button onclick="document.getElementById('gameOverModal').classList.add('hidden');setMode('sim')"
-                class="flex-1 border border-gray-600 hover:bg-gray-800 transition text-gray-300 font-bold py-2.5 rounded-lg text-sm">
-                Back to Sim
+                class="text-xs text-gray-600 hover:text-gray-400 transition">
+                Exit to Simulation mode
             </button>
         </div>`;
 
@@ -3514,13 +3526,32 @@ function buildContext() {
     }
   }
 
+  // Game mode context
+  let gameCtx = '';
+  if (gameState.active) {
+    const gsc = gameState.scenario;
+    const pSvc = services.find(s => s.id === gameState.playerServiceId);
+    const pSubs = pSvc ? agents.filter(a => a.subscriptions.includes(gameState.playerServiceId)).length : 0;
+    const activeMonths = pSvc ? currentMonth - gameState.playerEntryMonth : 0;
+    const monthsLeft = (gsc?.activeDuration || 30) - activeMonths;
+    const phase = gameState.phase;
+    gameCtx = `
+
+GAME MODE — Scenario: ${gsc?.name || '?'} | Phase: ${phase}
+Player service (StreamCo): q=${pSvc?.quality.toFixed(1) ?? '?'} v=${pSvc?.contentVolume.toFixed(1) ?? '?'} $${pSvc?.price.toFixed(0) ?? '?'} ${pSvc?.genreFocus ?? '?'} → ${pSubs} subscribers
+Credits: ${Math.floor(gameState.credits)} | Marketing boost months left: ${gameState.marketingBoostMonths}
+Win target: ${gsc?.bronzeTarget} subs (Bronze), ${gsc?.silverTarget} (Silver), ${gsc?.goldTarget} (Gold)
+Months left in game: ${monthsLeft > 0 ? monthsLeft : 'FINAL'}
+The student is playing as StreamCo and trying to grow subscribers. Help them reason about model dynamics — price vs. quality tradeoffs, genre niche strategy, when to boost marketing — without just telling them the answer.`;
+  }
+
   return `SIM — Month ${currentMonth}/${MONTHS} (${isRunning ? 'running' : 'paused'}) | Scenario: ${scenarioName}
 Economy: incomeGrowth=${ig} inflation=${cpi} → M=${M} (neutral=1.0; <1 boom; >1 recession)
 Agents: ${subscribed}/1000 subscribed | 0-subs:${dist[0]} 1-sub:${dist[1]} 2-subs:${dist[2]} 3-subs:${dist[3]}
 Age (sub/total): ${ageStr}
 Genre weights: ${genreStr}
 Services (index name: price q v genre → subs share Δ6months):
-${svcLines}${scenarioExtra}`;
+${svcLines}${scenarioExtra}${gameCtx}`;
 }
 
 const BASE_SYSTEM = `You are a pedagogical assistant for StreamSim, a high school classroom simulation of a streaming video market.
