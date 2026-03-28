@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StreamSim LLM Feasibility Test — Hybrid (WebGPU / Groq)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+    line-height: 1.6;
+    padding: 2rem;
+    max-width: 860px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 1.5rem; color: #f8fafc; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.1rem; color: #94a3b8; font-weight: 500; margin-bottom: 1.5rem; }
+  h3 { font-size: 0.95rem; color: #cbd5e1; margin-bottom: 0.5rem; font-weight: 600; }
+  p  { color: #94a3b8; font-size: 0.9rem; margin-bottom: 0.75rem; }
+  p strong { color: #e2e8f0; }
+  code { font-family: monospace; background: #1e2433; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.85em; }
+
+  .section {
+    background: #1e2433;
+    border: 1px solid #2d3748;
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.25rem;
+  }
+  .section.info  { border-color: #3b82f6; }
+  .section.warn  { border-color: #ca8a04; }
+  .section.good  { border-color: #22c55e; }
+
+  /* Backend detection banner */
+  #backend-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    margin-bottom: 1.25rem;
+    font-size: 0.88rem;
+    font-weight: 600;
+  }
+  #backend-banner.webgpu { background: #0f2a1a; border: 1px solid #22c55e; color: #86efac; }
+  #backend-banner.groq   { background: #1a1a0f; border: 1px solid #ca8a04; color: #fde68a; }
+  #backend-banner.detecting { background: #1a2032; border: 1px solid #3b82f6; color: #93c5fd; }
+  .backend-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .webgpu .backend-dot { background: #22c55e; }
+  .groq   .backend-dot { background: #ca8a04; }
+  .detecting .backend-dot { background: #3b82f6; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* Load area */
+  #progress-wrap {
+    background: #2d3748;
+    border-radius: 6px;
+    height: 10px;
+    overflow: hidden;
+    margin: 0.5rem 0;
+    display: none;
+  }
+  #progress-bar { background: #3b82f6; height: 100%; width: 0%; transition: width 0.2s; }
+  #load-status  { font-size: 0.82rem; color: #94a3b8; margin-bottom: 0.5rem; }
+
+  /* Groq key input */
+  #groq-section { display: none; }
+  #key-row { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+  #groq-key {
+    flex: 1;
+    background: #0f1117;
+    border: 1px solid #2d3748;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    color: #e2e8f0;
+    font-family: monospace;
+    font-size: 0.85rem;
+  }
+  #groq-key:focus { outline: none; border-color: #3b82f6; }
+  #key-save-btn {
+    background: #374151;
+    color: #e2e8f0;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  #key-save-btn:hover { background: #4b5563; }
+
+  button#run-btn {
+    background: #2563eb;
+    color: white;
+    border: none;
+    padding: 0.6rem 1.5rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 0.5rem;
+    transition: background 0.15s;
+  }
+  button#run-btn:hover:not(:disabled) { background: #1d4ed8; }
+  button#run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Test cards */
+  .test-card {
+    background: #0f1117;
+    border: 1px solid #2d3748;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    overflow: hidden;
+  }
+  .test-header {
+    padding: 0.75rem 1rem;
+    background: #1a2032;
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+  }
+  .test-header .label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
+    background: #2d3748;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+  }
+  .test-header .title { font-size: 0.9rem; color: #cbd5e1; font-weight: 600; }
+  .test-body { padding: 0.75rem 1rem; }
+  .test-body .why { font-size: 0.82rem; color: #64748b; margin-bottom: 0.6rem; font-style: italic; }
+  .prompt-box {
+    background: #1a2032;
+    border-left: 3px solid #3b82f6;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.82rem;
+    color: #94a3b8;
+    margin-bottom: 0.75rem;
+    border-radius: 0 4px 4px 0;
+    white-space: pre-wrap;
+    font-family: monospace;
+    max-height: 8rem;
+    overflow-y: auto;
+  }
+  .output-box {
+    background: #0a0d14;
+    border: 1px solid #2d3748;
+    border-radius: 6px;
+    padding: 0.75rem;
+    font-size: 0.85rem;
+    color: #a3e635;
+    font-family: monospace;
+    white-space: pre-wrap;
+    min-height: 2.5rem;
+    max-height: 14rem;
+    overflow-y: auto;
+    word-break: break-word;
+  }
+  .output-box .placeholder { color: #334155; font-style: italic; }
+  .stats-row {
+    display: flex; gap: 1.5rem;
+    margin-top: 0.5rem;
+    font-size: 0.78rem; color: #64748b;
+  }
+  .stats-row .val { color: #e2e8f0; font-weight: 600; }
+  .parsed-box {
+    background: #0a1a0a;
+    border: 1px solid #1a4a1a;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.82rem;
+    color: #86efac;
+    font-family: monospace;
+    white-space: pre-wrap;
+    margin-top: 0.5rem;
+  }
+
+  #verdict { display: none; }
+  hr { border: none; border-top: 1px solid #2d3748; margin: 1.25rem 0; }
+</style>
+</head>
+<body>
+
+<h1>StreamSim LLM Feasibility Test</h1>
+<h2>Hybrid: WebGPU on-device → Groq API fallback</h2>
+
+<!-- ── Backend detection banner ─────────────────────────────────────────── -->
+<div id="backend-banner" class="detecting">
+  <div class="backend-dot"></div>
+  <span id="backend-label">Detecting WebGPU…</span>
+</div>
+
+<!-- ── Explanation ──────────────────────────────────────────────────────── -->
+<div class="section info">
+  <h3>What this test evaluates</h3>
+  <p>
+    The hybrid strategy picks the best available backend automatically.
+    <strong>If WebGPU is available</strong> (most modern laptops and desktops running Chrome or Edge),
+    a 0.6B model runs entirely in the browser — no API key, no server.
+    <strong>If WebGPU is not available</strong> (older devices, Firefox, standard Chromebooks),
+    the assistant falls back to the Groq API, which requires a free API key entered by the teacher.
+  </p>
+  <p>
+    This page runs the same three tests — Q&amp;A, function calling, scenario generation —
+    on whichever backend your device supports, so you can compare quality and speed directly.
+  </p>
+</div>
+
+<!-- ── Load / key area ──────────────────────────────────────────────────── -->
+<div class="section" id="load-area">
+  <h3 id="load-heading">Step 1 — Initialize</h3>
+
+  <!-- WebGPU path -->
+  <div id="webgpu-section">
+    <p>
+      WebGPU detected. The model <strong>Qwen3-0.6B</strong> (~450 MB, 4-bit quantized)
+      will download from Hugging Face and run locally on your GPU.
+      First load only — subsequent visits use the browser cache.
+    </p>
+  </div>
+
+  <!-- Groq fallback path -->
+  <div id="groq-section">
+    <p>
+      WebGPU is not available on this device. The assistant will use the
+      <strong>Groq API</strong> (free tier) instead — responses come from a 70B model
+      running on Groq's servers. Enter a free Groq API key to continue.
+    </p>
+    <p>
+      Get a free key at <strong>console.groq.com</strong> — no credit card required.
+      The key is stored only in this browser tab and never sent anywhere except Groq.
+    </p>
+    <div id="key-row">
+      <input id="groq-key" type="password" placeholder="gsk_…" spellcheck="false" autocomplete="off">
+      <button id="key-save-btn">Save key</button>
+    </div>
+  </div>
+
+  <div id="progress-wrap"><div id="progress-bar"></div></div>
+  <div id="load-status"></div>
+  <button id="run-btn" disabled>Run Tests</button>
+</div>
+
+<!-- ── Test 1 — Q&A ─────────────────────────────────────────────────────── -->
+<div class="test-card">
+  <div class="test-header">
+    <span class="label">Test 1</span>
+    <span class="title">Q&amp;A — explain what's happening in the simulation</span>
+  </div>
+  <div class="test-body">
+    <p class="why">Does the model understand the simulation well enough to explain a subscriber drop to a high schooler?</p>
+    <div class="prompt-box" id="prompt-qa"></div>
+    <div class="output-box" id="out-qa"><span class="placeholder">Waiting…</span></div>
+    <div class="stats-row" id="stats-qa"></div>
+  </div>
+</div>
+
+<!-- ── Test 2 — Function calling ────────────────────────────────────────── -->
+<div class="test-card">
+  <div class="test-header">
+    <span class="label">Test 2</span>
+    <span class="title">Function calling — manipulate a simulation parameter</span>
+  </div>
+  <div class="test-body">
+    <p class="why">Can the model produce valid, parseable JSON for a tool call — the mechanism for safe sim control?</p>
+    <div class="prompt-box" id="prompt-fn"></div>
+    <div class="output-box" id="out-fn"><span class="placeholder">Waiting…</span></div>
+    <div class="stats-row" id="stats-fn"></div>
+    <div id="parsed-fn"></div>
+  </div>
+</div>
+
+<!-- ── Test 3 — Scenario generation ────────────────────────────────────── -->
+<div class="test-card">
+  <div class="test-header">
+    <span class="label">Test 3</span>
+    <span class="title">Scenario generation — create a novel classroom scenario</span>
+  </div>
+  <div class="test-body">
+    <p class="why">Can the model invent a plausible, pedagogically useful scenario and return it as valid JSON?</p>
+    <div class="prompt-box" id="prompt-sc"></div>
+    <div class="output-box" id="out-sc"><span class="placeholder">Waiting…</span></div>
+    <div class="stats-row" id="stats-sc"></div>
+    <div id="parsed-sc"></div>
+  </div>
+</div>
+
+<!-- ── Verdict ───────────────────────────────────────────────────────────── -->
+<div class="section" id="verdict">
+  <h3>Reading the results</h3>
+  <p><strong>Tokens/sec:</strong> &gt;8 tok/s feels fluid; 3–8 usable; &lt;3 frustrating in a classroom.</p>
+  <p><strong>Function call (Test 2):</strong> JSON must parse cleanly with correct field names and types. Failure means sim control is not safe — Q&amp;A only.</p>
+  <p><strong>Scenario (Test 3):</strong> A coherent, correctly-structured JSON means the model understood the domain well enough for teacher-facing features.</p>
+</div>
+
+<hr>
+<p style="font-size:0.78rem; color:#475569;">No data leaves your browser (WebGPU path) or goes only to Groq (API path).</p>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     JAVASCRIPT
+     ════════════════════════════════════════════════════════════════════════ -->
+<script type="module">
+// No Web Worker needed here:
+// - WebGPU inference is GPU-based and async — it doesn't block the main thread
+//   the way WASM did, so the DOM can update between tokens.
+// - Groq is just streaming fetch — already non-blocking.
+// Running both on the main thread keeps the code simple and avoids the
+// cross-origin Blob Worker restriction that blocked CDN imports.
+import { pipeline, TextStreamer } from
+  'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.2';
+
+const $ = id => document.getElementById(id);
+
+// ── Prompts ────────────────────────────────────────────────────────────────
+const SYSTEM_PROMPT = `You are a helpful assistant for StreamSim, a classroom streaming-market simulation.
+The simulation has 1000 agents (viewers). Each agent holds up to 3 subscriptions.
+Services are scored by: U = (Quality×0.6 + Volume×0.4) × GenreFit − (Price × Sensitivity × EconFactor).
+Churn rises when quality is low or the economy is bad. High-quality services (≥7/10) are sticky.
+Answer clearly for a high-school student. Be concise — 3 sentences max unless asked for more.`;
+
+const TOOL_SYSTEM = `${SYSTEM_PROMPT}
+
+When the user asks you to change a simulation parameter, respond with ONLY this JSON — nothing else:
+{"tool":"setServiceParam","args":{"serviceIndex":<int>,"param":"<price|quality|volume>","value":<number>}}
+serviceIndex: 0=NetStream 1=CineMax 2=GlowTV 3=EdgeVideo 4=PrimeWatch
+value ranges: price 5–20, quality 1–10, volume 1–10
+For any other request, answer normally in plain text.`;
+
+const SCENARIO_SYSTEM = `${SYSTEM_PROMPT}
+
+When asked to create a scenario, respond with ONLY valid JSON — no prose, no markdown:
+{"title":"<name>","description":"<1-2 sentences>","params":{"incomeGrowth":<-5 to 5>,"inflation":<0 to 8>,"services":[{"name":"<name>","price":<5-20>,"quality":<1-10>,"volume":<1-10>,"genre":"<Action|Drama|Comedy|Kids|Sci-Fi>"}]},"teachingGoal":"<concept>"}`;
+
+const TESTS = [
+  {
+    id: 'qa', label: 'Test 1 — Q&A',
+    promptDisplay: `[System] ${SYSTEM_PROMPT}\n\n[User] The simulation just ran for 24 months. NetStream started with 380 subscribers but now has 210. Its price is $14.99, quality is 5/10, and the economy has been in mild recession (inflation=4, incomeGrowth=-2). Why is it losing subscribers, and what would you tell a student to try?`,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user',   content: 'The simulation just ran for 24 months. NetStream started with 380 subscribers but now has 210. Its price is $14.99, quality is 5/10, and the economy has been in mild recession (inflation=4, incomeGrowth=-2). Why is it losing subscribers, and what would you tell a student to try?' }
+    ],
+    postProcess: null
+  },
+  {
+    id: 'fn', label: 'Test 2 — Function call',
+    promptDisplay: `[System] ${TOOL_SYSTEM}\n\n[User] CineMax is way too expensive — lower its price to $8.99 please`,
+    messages: [
+      { role: 'system', content: TOOL_SYSTEM },
+      { role: 'user',   content: 'CineMax is way too expensive — lower its price to $8.99 please' }
+    ],
+    postProcess: text => {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) return { ok: false, error: 'No JSON found in output' };
+      try {
+        const obj = JSON.parse(match[0]);
+        const ok  = obj.tool === 'setServiceParam'
+                 && typeof obj.args?.serviceIndex === 'number'
+                 && typeof obj.args?.param        === 'string'
+                 && typeof obj.args?.value        === 'number';
+        return { ok, parsed: obj };
+      } catch(e) { return { ok: false, error: e.message }; }
+    }
+  },
+  {
+    id: 'sc', label: 'Test 3 — Scenario generation',
+    promptDisplay: `[System] ${SCENARIO_SYSTEM}\n\n[User] Create a scenario called "Streaming Wars" where two premium services compete on quality while a cheap budget service tries to survive. Illustrate how price sensitivity interacts with quality.`,
+    messages: [
+      { role: 'system', content: SCENARIO_SYSTEM },
+      { role: 'user',   content: 'Create a scenario called "Streaming Wars" where two premium services compete on quality while a cheap budget service tries to survive. Illustrate how price sensitivity interacts with quality.' }
+    ],
+    postProcess: text => {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) return { ok: false, error: 'No JSON found in output' };
+      try {
+        const obj = JSON.parse(match[0]);
+        const ok  = typeof obj.title === 'string'
+                 && typeof obj.params === 'object'
+                 && Array.isArray(obj.params?.services);
+        return { ok, parsed: obj };
+      } catch(e) { return { ok: false, error: e.message }; }
+    }
+  }
+];
+
+TESTS.forEach(t => { const el = $(`prompt-${t.id}`); if (el) el.textContent = t.promptDisplay; });
+
+// ── Backend detection ──────────────────────────────────────────────────────
+// 'gpu' in navigator only confirms the API exists — the GPU may still be
+// unsupported or disabled. requestAdapter() is the authoritative check:
+// it returns null when no compatible GPU is available.
+let hasWebGPU = false;
+if ('gpu' in navigator) {
+  try {
+    const adapter = await navigator.gpu.requestAdapter();
+    hasWebGPU = adapter !== null;
+  } catch(_) {
+    hasWebGPU = false;
+  }
+}
+let backend     = hasWebGPU ? 'webgpu' : 'groq';
+let groqKey     = '';
+
+const banner = $('backend-banner');
+const label  = $('backend-label');
+
+if (hasWebGPU) {
+  banner.className = 'webgpu';
+  label.textContent = 'WebGPU detected — model will run locally on your GPU, no API key needed';
+  $('webgpu-section').style.display = 'block';
+  $('groq-section').style.display   = 'none';
+  // Enable run button immediately for WebGPU — key not needed
+  $('run-btn').disabled = false;
+} else {
+  banner.className = 'groq';
+  label.textContent = 'No WebGPU — will use Groq API (free, requires key)';
+  $('webgpu-section').style.display = 'none';
+  $('groq-section').style.display   = 'block';
+}
+
+// Groq key save
+$('key-save-btn').addEventListener('click', () => {
+  const v = $('groq-key').value.trim();
+  if (!v.startsWith('gsk_')) {
+    $('load-status').textContent = 'Key should start with gsk_ — check and try again.';
+    return;
+  }
+  groqKey = v;
+  $('load-status').textContent = 'Key saved. Ready to run.';
+  $('run-btn').disabled = false;
+});
+
+// ── WebGPU backend ─────────────────────────────────────────────────────────
+let generator  = null;
+const fileTotals = {};
+const fileLoaded = {};
+
+function updateBar() {
+  const total  = Object.values(fileTotals).reduce((a, b) => a + b, 0);
+  const loaded = Object.values(fileLoaded).reduce((a, b) => a + b, 0);
+  if (total > 0)
+    $('progress-bar').style.width = Math.min(100, loaded / total * 100).toFixed(0) + '%';
+}
+
+async function loadWebGPU() {
+  $('progress-wrap').style.display = 'block';
+  generator = await pipeline('text-generation', 'onnx-community/Qwen3-0.6B-ONNX', {
+    device: 'webgpu',
+    dtype:  'q4f16',
+    progress_callback: p => {
+      if (p.status === 'initiate' && p.total) {
+        fileTotals[p.file] = p.total; fileLoaded[p.file] = 0; updateBar();
+      } else if (p.status === 'progress') {
+        if (p.total)  fileTotals[p.file] = p.total;
+        if (p.loaded) fileLoaded[p.file] = p.loaded;
+        updateBar();
+        const loadedMB  = Object.values(fileLoaded).reduce((a, b) => a + b, 0);
+        const totalMB   = Object.values(fileTotals).reduce((a, b) => a + b, 0);
+        const pct       = totalMB > 0 ? Math.min(100, loadedMB / totalMB * 100) : 0;
+        const shortFile = (p.file ?? '').split('/').pop();
+        $('load-status').textContent =
+          `Downloading ${shortFile} — ${pct.toFixed(0)}% (${(loadedMB/1e6).toFixed(0)} / ${(totalMB/1e6).toFixed(0)} MB)`;
+      } else if (p.status === 'done') {
+        if (p.file && fileTotals[p.file]) fileLoaded[p.file] = fileTotals[p.file];
+        updateBar();
+        $('load-status').textContent = 'Download complete — initializing GPU…';
+      } else if (p.status === 'ready') {
+        $('progress-bar').style.width      = '100%';
+        $('progress-bar').style.background = '#22c55e';
+        $('load-status').textContent       = 'Model ready.';
+      }
+    }
+  });
+}
+
+async function runWebGPU(test) {
+  const outEl   = $(`out-${test.id}`);
+  const statsEl = $(`stats-${test.id}`);
+  const t0 = performance.now();
+  let tokenCount = 0;
+
+  const streamer = new TextStreamer(generator.tokenizer, {
+    skip_prompt: true,
+    skip_special_tokens: true,
+    callback_function: chunk => {
+      tokenCount++;
+      outEl.textContent += chunk;
+      outEl.scrollTop = outEl.scrollHeight;
+    }
+  });
+
+  await generator(test.messages, { max_new_tokens: 512, do_sample: false, temperature: 1.0, streamer });
+  const elapsed = (performance.now() - t0) / 1000;
+  statsEl.innerHTML = `
+    <span>Tokens: <span class="val">${tokenCount}</span></span>
+    <span>Time: <span class="val">${elapsed.toFixed(1)}s</span></span>
+    <span>Speed: <span class="val">${(tokenCount / elapsed).toFixed(1)} tok/s</span></span>`;
+}
+
+// ── Groq backend ────────────────────────────────────────────────────────────
+async function runGroq(test) {
+  const outEl   = $(`out-${test.id}`);
+  const statsEl = $(`stats-${test.id}`);
+  const t0 = performance.now();
+  let tokenCount = 0;
+
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: test.messages, stream: true, max_tokens: 512 })
+  });
+
+  if (!res.ok) throw new Error(`Groq ${res.status}: ${await res.text()}`);
+
+  // Parse OpenAI-compatible SSE stream: lines of "data: {json}" ending with "data: [DONE]"
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const payload = line.slice(6).trim();
+      if (payload === '[DONE]') continue;
+      try {
+        const chunk = JSON.parse(payload).choices[0]?.delta?.content;
+        if (chunk) {
+          tokenCount++;
+          outEl.textContent += chunk;
+          outEl.scrollTop = outEl.scrollHeight;
+        }
+      } catch (_) {}
+    }
+  }
+
+  const elapsed = (performance.now() - t0) / 1000;
+  statsEl.innerHTML = `
+    <span>Tokens: <span class="val">${tokenCount}</span></span>
+    <span>Time: <span class="val">${elapsed.toFixed(1)}s</span></span>
+    <span>Speed: <span class="val">${(tokenCount / elapsed).toFixed(1)} tok/s</span></span>`;
+}
+
+// ── Run button ─────────────────────────────────────────────────────────────
+let modelLoaded = false;
+
+$('run-btn').addEventListener('click', async () => {
+  $('run-btn').disabled = true;
+  $('verdict').style.display = 'none';
+
+  try {
+    if (backend === 'webgpu' && !modelLoaded) {
+      $('load-status').textContent = 'Loading model…';
+      await loadWebGPU();
+      modelLoaded = true;
+    }
+
+    $('load-status').textContent = 'Running tests…';
+
+    for (const test of TESTS) {
+      $('load-status').textContent = `Running ${test.label}…`;
+      $(`out-${test.id}`).innerHTML = '';
+
+      if (backend === 'webgpu') {
+        await runWebGPU(test);
+      } else {
+        await runGroq(test);
+      }
+
+      if (test.postProcess) {
+        const result   = test.postProcess($(`out-${test.id}`).textContent);
+        const parsedEl = $(`parsed-${test.id}`);
+        if (parsedEl) parsedEl.innerHTML = result.ok
+          ? `<div class="parsed-box">✓ Valid JSON:\n${JSON.stringify(result.parsed, null, 2)}</div>`
+          : `<div class="parsed-box" style="color:#f87171">✗ Parse failed: ${result.error}</div>`;
+      }
+    }
+
+    $('load-status').textContent = 'All tests complete.';
+    $('verdict').style.display = 'block';
+
+  } catch(err) {
+    $('load-status').textContent = `Error: ${err.message}`;
+  }
+
+  $('run-btn').disabled = false;
+  $('run-btn').textContent = 'Run Again';
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StreamSim LLM Feasibility Test — SmolLM2-135M on WASM</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+    line-height: 1.6;
+    padding: 2rem;
+    max-width: 860px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 1.5rem; color: #f8fafc; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.1rem; color: #94a3b8; font-weight: 500; margin-bottom: 1.5rem; }
+  h3 { font-size: 0.95rem; color: #cbd5e1; margin-bottom: 0.5rem; font-weight: 600; }
+  p  { color: #94a3b8; font-size: 0.9rem; margin-bottom: 0.75rem; }
+  p strong { color: #e2e8f0; }
+  a  { color: #60a5fa; }
+
+  .section {
+    background: #1e2433;
+    border: 1px solid #2d3748;
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.25rem;
+  }
+  .section.warn  { border-color: #ca8a04; }
+  .section.info  { border-color: #3b82f6; }
+  .section.good  { border-color: #22c55e; }
+
+  /* Progress / status bar */
+  #load-area { margin-bottom: 1.25rem; }
+  #progress-wrap {
+    background: #2d3748;
+    border-radius: 6px;
+    height: 10px;
+    overflow: hidden;
+    margin: 0.5rem 0;
+  }
+  #progress-bar {
+    background: #3b82f6;
+    height: 100%;
+    width: 0%;
+    transition: width 0.2s;
+  }
+  #load-status { font-size: 0.82rem; color: #94a3b8; }
+
+  /* Test cards */
+  .test-card {
+    background: #0f1117;
+    border: 1px solid #2d3748;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    overflow: hidden;
+  }
+  .test-header {
+    padding: 0.75rem 1rem;
+    background: #1a2032;
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+  }
+  .test-header .label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
+    background: #2d3748;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+  }
+  .test-header .title { font-size: 0.9rem; color: #cbd5e1; font-weight: 600; }
+  .test-body { padding: 0.75rem 1rem; }
+  .test-body .why { font-size: 0.82rem; color: #64748b; margin-bottom: 0.6rem; font-style: italic; }
+  .prompt-box {
+    background: #1a2032;
+    border-left: 3px solid #3b82f6;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.82rem;
+    color: #94a3b8;
+    margin-bottom: 0.75rem;
+    border-radius: 0 4px 4px 0;
+    white-space: pre-wrap;
+    font-family: monospace;
+  }
+  .output-box {
+    background: #0a0d14;
+    border: 1px solid #2d3748;
+    border-radius: 6px;
+    padding: 0.75rem;
+    font-size: 0.85rem;
+    color: #a3e635;
+    font-family: monospace;
+    white-space: pre-wrap;
+    min-height: 2.5rem;
+    max-height: 14rem;
+    overflow-y: auto;
+    word-break: break-word;
+  }
+  .output-box .placeholder { color: #334155; font-style: italic; }
+  .stats-row {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 0.5rem;
+    font-size: 0.78rem;
+    color: #64748b;
+  }
+  .stats-row span { display: flex; gap: 0.3rem; align-items: center; }
+  .stats-row .val { color: #e2e8f0; font-weight: 600; }
+  .parsed-box {
+    background: #0a1a0a;
+    border: 1px solid #1a4a1a;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.82rem;
+    color: #86efac;
+    font-family: monospace;
+    white-space: pre-wrap;
+    margin-top: 0.5rem;
+  }
+
+  /* Run button */
+  #run-btn {
+    background: #2563eb;
+    color: white;
+    border: none;
+    padding: 0.6rem 1.5rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 0.5rem;
+    transition: background 0.15s;
+  }
+  #run-btn:hover:not(:disabled) { background: #1d4ed8; }
+  #run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Verdict */
+  #verdict { display: none; }
+  #verdict-body { font-size: 0.88rem; color: #94a3b8; }
+  #verdict-body strong { color: #e2e8f0; }
+
+  hr { border: none; border-top: 1px solid #2d3748; margin: 1.25rem 0; }
+
+  .badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    vertical-align: middle;
+    margin-left: 0.4rem;
+  }
+  .badge-wasm { background: #1e3a5f; color: #60a5fa; }
+  .badge-cpu  { background: #3b2a0a; color: #fbbf24; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════
+     WHAT THIS PAGE IS
+     ═══════════════════════════════════════════════════════ -->
+<h1>StreamSim LLM Feasibility Test</h1>
+<h2>SmolLM2-135M (diagnostic) &nbsp;<span class="badge badge-wasm">WASM</span><span class="badge badge-cpu">CPU-only</span></h2>
+
+<div class="section info">
+  <h3>What we're testing and why</h3>
+  <p>
+    We're evaluating whether a <strong>language model running entirely inside your browser</strong>
+    — on your CPU, with no internet connection to any AI service, no API key, no server — is
+    fast and smart enough to power a conversational assistant for the StreamSim classroom tool.
+  </p>
+  <p>
+    <strong>Current model under test: SmolLM2-135M</strong> (135 million parameters, by Hugging Face).
+    Our first choice, Qwen3-0.6B, crashed the WASM runtime with an out-of-memory error — its
+    4-bit weights are ~928 MB, exceeding WebAssembly's practical memory ceiling.
+    SmolLM2-135M (~270 MB) is the smallest instruction-tuned model with a realistic chance of
+    fitting. If even this model's quality is too low, the WASM-only approach is not viable and
+    we will need to reconsider (WebGPU for on-device, or a free cloud API with a teacher-supplied key).
+  </p>
+  <p>
+    It runs via <strong>Transformers.js</strong>, which compiles the model to WebAssembly (WASM)
+    so it executes on any modern browser, on any device, even without a GPU.
+  </p>
+  <p>
+    <strong>The three tests below mirror exactly what StreamSim's assistant would need to do</strong>
+    in a real classroom session: answer a student's question about the simulation, generate a
+    novel scenario as structured data, and decide which simulation parameter to change in response
+    to a natural-language request (function calling).
+  </p>
+  <p>
+    Watch the <strong>tokens/sec</strong> and judge the <strong>response quality</strong> yourself.
+    There's no automated pass/fail — you're the judge of whether it's good enough for classroom use.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     MODEL LOADING
+     ═══════════════════════════════════════════════════════ -->
+<div class="section" id="load-area">
+  <h3>Step 1 — Load the model</h3>
+  <p>
+    The model weights (~928 MB, 4-bit quantized) are downloaded from Hugging Face into
+    browser memory. Because the file exceeds typical browser cache quotas, it is
+    <strong>not persisted</strong> — it re-downloads on each page load.
+    This is a known limitation being evaluated as part of this feasibility test.
+  </p>
+  <p>On a slow school WiFi connection this download could take 3–8 minutes.</p>
+  <div id="progress-wrap"><div id="progress-bar"></div></div>
+  <div id="load-status">Ready to load. Click "Run Tests" to begin.</div>
+  <button id="run-btn">Run Tests</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     TEST 1 — Q&A
+     ═══════════════════════════════════════════════════════ -->
+<div class="test-card" id="card-qa">
+  <div class="test-header">
+    <span class="label">Test 1</span>
+    <span class="title">Q&amp;A — explain what's happening in the simulation</span>
+  </div>
+  <div class="test-body">
+    <p class="why">
+      The most common student interaction: "Why does this service keep losing subscribers?"
+      The model receives a snapshot of current sim state and must give a plain-English explanation
+      appropriate for a high schooler. Quality matters more than speed here.
+    </p>
+    <div class="prompt-box" id="prompt-qa"></div>
+    <div class="output-box" id="out-qa"><span class="placeholder">Waiting for model…</span></div>
+    <div class="stats-row" id="stats-qa"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     TEST 2 — FUNCTION CALLING
+     ═══════════════════════════════════════════════════════ -->
+<div class="test-card" id="card-fn">
+  <div class="test-header">
+    <span class="label">Test 2</span>
+    <span class="title">Function calling — manipulate a simulation parameter</span>
+  </div>
+  <div class="test-body">
+    <p class="why">
+      For direct sim control, the assistant must convert a natural-language request into a
+      <strong>structured JSON tool call</strong> that our JavaScript can execute safely —
+      no <code>eval()</code>, no free-form code. The model is given a tool schema and must
+      pick the right function with valid arguments. This tests whether a 0.6B model can reliably
+      produce parseable, correctly-typed JSON.
+    </p>
+    <div class="prompt-box" id="prompt-fn"></div>
+    <div class="output-box" id="out-fn"><span class="placeholder">Waiting for model…</span></div>
+    <div class="stats-row" id="stats-fn"></div>
+    <div id="parsed-fn"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     TEST 3 — SCENARIO GENERATION
+     ═══════════════════════════════════════════════════════ -->
+<div class="test-card" id="card-sc">
+  <div class="test-header">
+    <span class="label">Test 3</span>
+    <span class="title">Scenario generation — create a novel classroom scenario</span>
+  </div>
+  <div class="test-body">
+    <p class="why">
+      Teachers can ask the assistant to invent a new simulation scenario — a named economic
+      situation with specific parameter values and a pedagogical goal. The model must return
+      a valid JSON object that our code can load directly. This is the hardest task for a
+      small model: it requires creativity, domain knowledge, <em>and</em> strict structured output.
+    </p>
+    <div class="prompt-box" id="prompt-sc"></div>
+    <div class="output-box" id="out-sc"><span class="placeholder">Waiting for model…</span></div>
+    <div class="stats-row" id="stats-sc"></div>
+    <div id="parsed-sc"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     VERDICT
+     ═══════════════════════════════════════════════════════ -->
+<div class="section" id="verdict">
+  <h3>Reading the results</h3>
+  <div id="verdict-body">
+    <p>
+      <strong>Tokens/sec:</strong> &gt;8 tok/s feels fluid; 3–8 tok/s is usable but noticeable;
+      &lt;3 tok/s will frustrate students waiting for a response mid-class.
+    </p>
+    <p>
+      <strong>Function call (Test 2):</strong> The JSON must parse cleanly and have the correct
+      field names and types. If it hallucinates a field name or outputs malformed JSON,
+      the assistant cannot safely control the simulation — it would be limited to Q&amp;A only.
+    </p>
+    <p>
+      <strong>Scenario JSON (Test 3):</strong> A creative, well-structured scenario suggests the
+      model understood the domain. Gibberish or missing required fields means scenario generation
+      would need a larger model or a cloud fallback.
+    </p>
+    <p>
+      <strong>Bottom line:</strong> If Tests 1 &amp; 2 both pass at acceptable speed, we proceed
+      with Transformers.js as the sole backend. If Test 2 fails repeatedly, we limit the assistant
+      to Q&amp;A and add a teacher-supplied API key option for sim control.
+    </p>
+  </div>
+</div>
+
+<hr>
+<p style="font-size:0.78rem; color:#475569;">No data leaves your browser.</p>
+
+<!-- ═══════════════════════════════════════════════════════
+     JAVASCRIPT
+     ═══════════════════════════════════════════════════════ -->
+<script type="module">
+// ─── Why a Web Worker? ───────────────────────────────────────────────────────
+// WASM inference runs synchronously on whichever thread calls it. If we ran it
+// on the main thread, the browser would freeze between tokens — no DOM repaints,
+// no visible streaming. Moving inference to a Worker lets the main thread stay
+// responsive: the worker posts a message for each decoded token chunk, and the
+// main thread appends it to the output box immediately.
+
+const MODEL_ID = 'HuggingFaceTB/SmolLM2-135M-Instruct';
+const DEVICE   = 'wasm';
+const DTYPE    = 'q4';
+
+// ─── DOM helpers ─────────────────────────────────────────────────────────────
+const $      = id => document.getElementById(id);
+const bar    = $('progress-bar');
+const status = $('load-status');
+
+// ─── Test definitions (stay on main thread — contain functions) ───────────────
+const SYSTEM_PROMPT = `You are a helpful assistant for StreamSim, a classroom streaming-market simulation.
+The simulation has 1000 agents (viewers). Each agent holds up to 3 subscriptions.
+Services are scored by: U = (Quality×0.6 + Volume×0.4) × GenreFit − (Price × Sensitivity × EconFactor).
+Churn rises when quality is low or the economy is bad. High-quality services (≥7/10) are sticky.
+Answer clearly for a high-school student. Be concise — 3 sentences max unless asked for more.`;
+
+const TOOL_SYSTEM = `${SYSTEM_PROMPT}
+
+You can call ONE tool to control the simulation. When the user asks you to change a parameter,
+respond with ONLY a JSON object in this exact format — nothing before or after it:
+{"tool":"setServiceParam","args":{"serviceIndex":<int>,"param":"<price|quality|volume>","value":<number>}}
+
+If the request is not about changing a parameter, answer normally in plain text.`;
+
+const SCENARIO_SYSTEM = `${SYSTEM_PROMPT}
+
+When asked to create a scenario, respond with ONLY a valid JSON object — no prose, no markdown fences.
+Use this exact shape:
+{
+  "title": "<short scenario name>",
+  "description": "<1-2 sentences for the teacher card>",
+  "params": {
+    "incomeGrowth": <-5 to 5>,
+    "inflation": <0 to 8>,
+    "services": [
+      { "name": "<name>", "price": <5-20>, "quality": <1-10>, "volume": <1-10>, "genre": "<Action|Drama|Comedy|Kids|Sci-Fi>" }
+    ]
+  },
+  "teachingGoal": "<what concept this illustrates>"
+}`;
+
+const TESTS = [
+  {
+    id:    'qa',
+    label: 'Test 1 — Q&A',
+    promptDisplay: `[System] ${SYSTEM_PROMPT}\n\n[User] The simulation just ran for 24 months. NetStream started with 380 subscribers but now has 210. Its price is $14.99, quality is 5/10, and the economy has been in mild recession (inflation=4, incomeGrowth=-2). Why is it losing subscribers, and what would you tell a student to try?`,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user',   content: 'The simulation just ran for 24 months. NetStream started with 380 subscribers but now has 210. Its price is $14.99, quality is 5/10, and the economy has been in mild recession (inflation=4, incomeGrowth=-2). Why is it losing subscribers, and what would you tell a student to try?' }
+    ],
+    postProcess: null
+  },
+  {
+    id:    'fn',
+    label: 'Test 2 — Function call',
+    promptDisplay: `[System] ${TOOL_SYSTEM}\n\n[User] CineMax is way too expensive — lower its price to $8.99 please`,
+    messages: [
+      { role: 'system', content: TOOL_SYSTEM },
+      { role: 'user',   content: 'CineMax is way too expensive — lower its price to $8.99 please' }
+    ],
+    postProcess: text => {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) return { ok: false, error: 'No JSON found in output' };
+      try {
+        const obj = JSON.parse(match[0]);
+        const ok  = obj.tool === 'setServiceParam'
+                 && typeof obj.args?.serviceIndex === 'number'
+                 && typeof obj.args?.param        === 'string'
+                 && typeof obj.args?.value        === 'number';
+        return { ok, parsed: obj };
+      } catch(e) { return { ok: false, error: e.message }; }
+    }
+  },
+  {
+    id:    'sc',
+    label: 'Test 3 — Scenario generation',
+    promptDisplay: `[System] ${SCENARIO_SYSTEM}\n\n[User] Create a scenario called "Streaming Wars" where two premium services compete aggressively on quality while a cheap budget service tries to survive. Make it illustrate how price sensitivity interacts with quality.`,
+    messages: [
+      { role: 'system', content: SCENARIO_SYSTEM },
+      { role: 'user',   content: 'Create a scenario called "Streaming Wars" where two premium services compete aggressively on quality while a cheap budget service tries to survive. Make it illustrate how price sensitivity interacts with quality.' }
+    ],
+    postProcess: text => {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) return { ok: false, error: 'No JSON found in output' };
+      try {
+        const obj = JSON.parse(match[0]);
+        const ok  = typeof obj.title === 'string'
+                 && typeof obj.params === 'object'
+                 && Array.isArray(obj.params?.services);
+        return { ok, parsed: obj };
+      } catch(e) { return { ok: false, error: e.message }; }
+    }
+  }
+];
+
+TESTS.forEach(t => {
+  const el = $(`prompt-${t.id}`);
+  if (el) el.textContent = t.promptDisplay;
+});
+
+// ─── Worker code (inlined as a Blob so we stay single-file) ──────────────────
+// The worker owns the pipeline instance. It receives 'load' and 'generate'
+// messages and posts back 'progress', 'token', 'done', and 'error' messages.
+const WORKER_SRC = `
+import { pipeline, TextStreamer, env } from
+  'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.2';
+
+env.useBrowserCache = false;
+
+let generator = null;
+
+self.onmessage = async ({ data }) => {
+  if (data.type === 'load') {
+    try {
+      generator = await pipeline('text-generation', data.modelId, {
+        device: data.device,
+        dtype:  data.dtype,
+        progress_callback: p => self.postMessage({ type: 'progress', p })
+      });
+      self.postMessage({ type: 'loaded' });
+    } catch(err) {
+      self.postMessage({ type: 'error', message: err.message });
+    }
+  }
+
+  if (data.type === 'generate') {
+    const t0 = performance.now();
+    let tokenCount = 0;
+
+    const streamer = new TextStreamer(generator.tokenizer, {
+      skip_prompt: true,
+      skip_special_tokens: true,
+      callback_function: chunk => {
+        tokenCount++;
+        // Each postMessage here yields back to the main thread, enabling
+        // visible token-by-token streaming in the output box.
+        self.postMessage({ type: 'token', testId: data.testId, chunk });
+      }
+    });
+
+    try {
+      await generator(data.messages, {
+        max_new_tokens: 256,
+        do_sample:      false,
+        temperature:    1.0,
+        streamer
+      });
+      const elapsed = (performance.now() - t0) / 1000;
+      self.postMessage({ type: 'done', testId: data.testId, tokenCount, elapsed });
+    } catch(err) {
+      self.postMessage({ type: 'error', message: err.message });
+    }
+  }
+};
+`;
+
+const workerBlob = new Blob([WORKER_SRC], { type: 'application/javascript' });
+const worker     = new Worker(URL.createObjectURL(workerBlob), { type: 'module' });
+
+// ─── Main thread: handle worker messages ─────────────────────────────────────
+// resolveLoad / resolveDone let us await worker events as promises.
+let resolveLoad = null;
+let resolveDone = null;
+const fileTotals = {};
+const fileLoaded = {};
+
+function updateBar() {
+  const total  = Object.values(fileTotals).reduce((a, b) => a + b, 0);
+  const loaded = Object.values(fileLoaded).reduce((a, b) => a + b, 0);
+  if (total > 0) bar.style.width = Math.min(100, loaded / total * 100).toFixed(0) + '%';
+}
+
+worker.onmessage = ({ data }) => {
+  if (data.type === 'progress') {
+    const p = data.p;
+    if (p.status === 'initiate' && p.total) {
+      fileTotals[p.file] = p.total; fileLoaded[p.file] = 0; updateBar();
+    } else if (p.status === 'progress') {
+      if (p.total)  fileTotals[p.file] = p.total;
+      if (p.loaded) fileLoaded[p.file] = p.loaded;
+      updateBar();
+      const loadedMB  = Object.values(fileLoaded).reduce((a, b) => a + b, 0);
+      const totalMB   = Object.values(fileTotals).reduce((a, b) => a + b, 0);
+      const pct       = totalMB > 0 ? Math.min(100, loadedMB / totalMB * 100) : 0;
+      const shortFile = (p.file ?? '').split('/').pop();
+      status.textContent = `Downloading ${shortFile} — ${pct.toFixed(0)}% (${(loadedMB/1e6).toFixed(0)} / ${(totalMB/1e6).toFixed(0)} MB)`;
+    } else if (p.status === 'done') {
+      if (p.file && fileTotals[p.file]) fileLoaded[p.file] = fileTotals[p.file];
+      updateBar();
+      status.textContent = 'Download complete — initializing WASM runtime… (may take 30–60s)';
+    } else if (p.status === 'ready') {
+      bar.style.width = '100%';
+      status.textContent = 'Model ready.';
+    }
+  }
+
+  if (data.type === 'loaded') {
+    bar.style.width      = '100%';
+    bar.style.background = '#22c55e';
+    if (resolveLoad) { resolveLoad(); resolveLoad = null; }
+  }
+
+  if (data.type === 'token') {
+    // Append each token to the correct output box as it arrives
+    const outEl = $(`out-${data.testId}`);
+    if (outEl) { outEl.textContent += data.chunk; outEl.scrollTop = outEl.scrollHeight; }
+  }
+
+  if (data.type === 'done') {
+    const statsEl = $(`stats-${data.testId}`);
+    if (statsEl) statsEl.innerHTML = `
+      <span>Tokens: <span class="val">${data.tokenCount}</span></span>
+      <span>Time: <span class="val">${data.elapsed.toFixed(1)}s</span></span>
+      <span>Speed: <span class="val">${(data.tokenCount / data.elapsed).toFixed(1)} tok/s</span></span>`;
+    if (resolveDone) { resolveDone(); resolveDone = null; }
+  }
+
+  if (data.type === 'error') {
+    status.textContent = `Error: ${data.message}`;
+    $('run-btn').disabled = false;
+    if (resolveLoad) { resolveLoad(); resolveLoad = null; }
+    if (resolveDone) { resolveDone(); resolveDone = null; }
+  }
+};
+
+// ─── Button handler ───────────────────────────────────────────────────────────
+let modelLoaded = false;
+
+$('run-btn').addEventListener('click', async () => {
+  $('run-btn').disabled = true;
+  $('verdict').style.display = 'none';
+
+  // Load once; skip on subsequent runs
+  if (!modelLoaded) {
+    status.textContent = 'Starting download…';
+    await new Promise(res => {
+      resolveLoad = res;
+      worker.postMessage({ type: 'load', modelId: MODEL_ID, device: DEVICE, dtype: DTYPE });
+    });
+    modelLoaded = true;
+  }
+
+  status.textContent = 'Running tests…';
+
+  for (const test of TESTS) {
+    status.textContent = `Running ${test.label}…`;
+    $(`out-${test.id}`).innerHTML = '';   // clear placeholder
+
+    await new Promise(res => {
+      resolveDone = res;
+      worker.postMessage({ type: 'generate', testId: test.id, messages: test.messages });
+    });
+
+    // Run postProcess (JSON parsing) on the now-complete output text
+    if (test.postProcess) {
+      const text      = $(`out-${test.id}`).textContent;
+      const result    = test.postProcess(text);
+      const parsedEl  = $(`parsed-${test.id}`);
+      if (parsedEl) parsedEl.innerHTML = result.ok
+        ? `<div class="parsed-box">✓ Valid JSON parsed:\n${JSON.stringify(result.parsed, null, 2)}</div>`
+        : `<div class="parsed-box" style="color:#f87171">✗ Parse failed: ${result.error}</div>`;
+    }
+  }
+
+  status.textContent = 'All tests complete.';
+  $('verdict').style.display = 'block';
+  $('run-btn').disabled = false;
+  $('run-btn').textContent = 'Run Again';
+});
+</script>
+</body>
+</html>
