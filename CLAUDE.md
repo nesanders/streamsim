@@ -112,10 +112,10 @@ The sim has two modes toggled by pill buttons in the nav: **Simulation** and **G
 
 ### Founding budget
 
-- `foundingBudget = 14` (Disruption scenario)
-- Quality cost: `(val − 3) × 2` pts; Volume cost: `(val − 3) × 1` pt
+- `foundingBudget = 8`, `startingCredits = 20` (Disruption scenario)
+- Quality cost: `(val − 3) × 2` pts; Volume cost: `(val − 3) × 1` pt; Price cost: `max(0, 10 − price)` pts (each $1 below $10)
 - Unspent points → `× 5` starting credits
-- Helpers: `foundingQualityCost(q)`, `foundingVolumeCost(v)`, `foundingBudgetUsed(q, v)`
+- Helpers: `foundingQualityCost(q)`, `foundingVolumeCost(v)`, `foundingPriceCost(p)`, `foundingBudgetUsed(q, v, p)`
 
 ### Credit system
 
@@ -136,7 +136,7 @@ Credits earned per step: `subscriberCount × price × 0.015`. Accumulated in `ga
 
 1. `startGameScenario(id)` — initializes sim with competitor services, runs pre-run at `preRunSpeed` ms/step.
 2. After `preRunMonths`, founding modal opens → `launchPlayerService()` adds StreamCo as 5th service.
-3. `step()` calls `onGameStep()` each month (earn credits, decrement marketing boost, fire scenario events).
+3. `step()` calls `onGameStep()` each month (earn credits, decrement marketing boost, apply quality decay −0.05/month to all services, fire scenario events).
 4. Every `pauseInterval` months: `showBudgetBoard()` opens — player spends credits, then `closeBudgetBoard()` resumes.
 5. At `activeDuration` months after entry: `endGame()` → `showGameOver()`.
 6. Game over modal has Play Again (restarts scenario) and View Dashboard (closes modal, stays in game-complete phase) options.

@@ -40,6 +40,7 @@
         body.game-mode #gameHUD          { display: block; }
         #gamePreRunBanner                { display: none; }
         body.game-mode #gamePreRunBanner { display: block; }
+        #gamePreRunBanner.hidden         { display: none !important; }
 
         /* ── Budget board / game modals ── */
         .upgrade-btn:not(:disabled):hover { background: rgba(147,51,234,0.08); }
@@ -393,106 +394,105 @@
         </div>
     </div>
 
-    <!-- ── Game: Founding Modal ── -->
-    <div id="gameFoundingModal" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[110] hidden">
-        <div class="bg-[#0a0a0a] border border-purple-900/60 p-6 rounded-xl max-w-xl w-full mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <h2 class="text-xl font-bold text-white mb-1">Launch StreamCo</h2>
-            <p class="text-gray-400 text-sm mb-5">Allocate your founding budget, then set your price and genre. The market has been running 12 months — pick a strategy.</p>
-
-            <!-- Budget meter -->
-            <div class="mb-5">
-                <div class="flex justify-between text-xs mb-1">
-                    <span class="text-gray-400">Founding Budget</span>
-                    <span><span id="foundingBudgetUsed" class="text-white font-bold">6</span> / <span id="foundingBudgetTotal" class="text-gray-400">14</span> pts used &nbsp;<span id="foundingBudgetRemaining" class="text-yellow-400 font-bold">8 remaining</span></span>
+    <!-- ── Game: Founding Card (inline top card, not a modal) ── -->
+    <div id="gameFoundingModal" class="hidden bg-[#0a0a0a] border-b border-purple-900/50">
+        <div class="px-10 sm:px-14 py-4">
+            <!-- Header + budget meter -->
+            <div class="flex items-start justify-between mb-2 gap-6">
+                <div class="flex-shrink-0">
+                    <h2 class="text-sm font-bold text-white">Launch StreamCo</h2>
+                    <p class="text-[10px] text-gray-500 mt-0.5">The market has run 12 months — study the chart below, then configure your service.</p>
                 </div>
-                <div class="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
-                    <div id="foundingBudgetBar" class="h-2 rounded-full bg-purple-600 transition-all" style="width:43%"></div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex justify-between text-[10px] mb-1">
+                        <span class="text-gray-400">Founding Budget</span>
+                        <span><span id="foundingBudgetUsed" class="text-white font-bold">3</span><span class="text-gray-600"> / </span><span id="foundingBudgetTotal" class="text-gray-400">8</span> pts &nbsp;<span id="foundingBudgetRemaining" class="text-yellow-400 font-bold">5 remaining → +25 starting credits</span></span>
+                    </div>
+                    <div class="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                        <div id="foundingBudgetBar" class="h-1.5 rounded-full bg-purple-600 transition-all" style="width:38%"></div>
+                    </div>
+                    <p class="text-[9px] text-gray-700 mt-0.5">Q costs 2 pts/level · V costs 1 pt/level · price below $10 costs 1 pt/$1 · unspent pts → 5 credits each</p>
                 </div>
-                <p class="text-[10px] text-gray-600 mt-1">Quality costs 2 pts/level (sticky subscribers). Volume costs 1 pt/level (faster growth). Unspent pts → 5 credits each.</p>
             </div>
-
-            <div class="grid grid-cols-2 gap-4 mb-5">
+            <!-- Controls row -->
+            <div class="flex items-stretch gap-3">
                 <!-- Quality -->
-                <div class="bg-black/40 rounded-lg p-3">
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="text-xs text-gray-400 uppercase tracking-wide">Content Quality</span>
-                        <span class="text-[10px] text-gray-600"><span id="foundingQualityCost">4</span> pts</span>
+                <div class="bg-black/40 rounded-lg px-3 py-2 flex-1">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[10px] text-gray-400 uppercase tracking-wide">Quality</span>
+                        <span class="text-[9px] text-gray-600"><span id="foundingQualityCost">2</span> pts</span>
                     </div>
-                    <div class="flex items-center gap-3">
-                        <button id="foundingQDown" onclick="foundingAdjust('quality',-1)" class="w-7 h-7 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-lg leading-none flex items-center justify-center transition">−</button>
-                        <span id="foundingQualityVal" class="text-2xl font-bold text-white w-8 text-center">5</span>
-                        <button id="foundingQUp"   onclick="foundingAdjust('quality',+1)" class="w-7 h-7 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-lg leading-none flex items-center justify-center transition">+</button>
+                    <div class="flex items-center gap-2">
+                        <button id="foundingQDown" onclick="foundingAdjust('quality',-1)" class="w-6 h-6 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-base leading-none flex items-center justify-center transition">−</button>
+                        <span id="foundingQualityVal" class="text-xl font-bold text-white w-7 text-center">4</span>
+                        <button id="foundingQUp"   onclick="foundingAdjust('quality',+1)" class="w-6 h-6 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-base leading-none flex items-center justify-center transition">+</button>
                     </div>
-                    <p class="text-[10px] text-gray-600 mt-1">High quality → lower churn rate</p>
+                    <p class="text-[9px] text-gray-700 mt-1">↓ churn rate</p>
                 </div>
                 <!-- Volume -->
-                <div class="bg-black/40 rounded-lg p-3">
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="text-xs text-gray-400 uppercase tracking-wide">Content Volume</span>
-                        <span class="text-[10px] text-gray-600"><span id="foundingVolumeCost">2</span> pts</span>
+                <div class="bg-black/40 rounded-lg px-3 py-2 flex-1">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[10px] text-gray-400 uppercase tracking-wide">Volume</span>
+                        <span class="text-[9px] text-gray-600"><span id="foundingVolumeCost">1</span> pts</span>
                     </div>
-                    <div class="flex items-center gap-3">
-                        <button id="foundingVDown" onclick="foundingAdjust('volume',-1)" class="w-7 h-7 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-lg leading-none flex items-center justify-center transition">−</button>
-                        <span id="foundingVolumeVal" class="text-2xl font-bold text-white w-8 text-center">5</span>
-                        <button id="foundingVUp"   onclick="foundingAdjust('volume',+1)" class="w-7 h-7 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-lg leading-none flex items-center justify-center transition">+</button>
+                    <div class="flex items-center gap-2">
+                        <button id="foundingVDown" onclick="foundingAdjust('volume',-1)" class="w-6 h-6 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-base leading-none flex items-center justify-center transition">−</button>
+                        <span id="foundingVolumeVal" class="text-xl font-bold text-white w-7 text-center">4</span>
+                        <button id="foundingVUp"   onclick="foundingAdjust('volume',+1)" class="w-6 h-6 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-base leading-none flex items-center justify-center transition">+</button>
                     </div>
-                    <p class="text-[10px] text-gray-600 mt-1">High volume → faster subscriber growth</p>
+                    <p class="text-[9px] text-gray-700 mt-1">↑ signup rate</p>
                 </div>
                 <!-- Price -->
-                <div class="bg-black/40 rounded-lg p-3">
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="text-xs text-gray-400 uppercase tracking-wide">Monthly Price</span>
-                        <span class="text-[10px] text-green-600">Free to change</span>
+                <div class="bg-black/40 rounded-lg px-3 py-2 flex-1">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[10px] text-gray-400 uppercase tracking-wide">Price</span>
+                        <span class="text-[9px] text-gray-400"><span id="foundingPriceCost">0</span> pts</span>
                     </div>
-                    <div class="flex items-center gap-3">
-                        <button id="foundingPDown" onclick="foundingAdjust('price',-1)" class="w-7 h-7 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-lg leading-none flex items-center justify-center transition">−</button>
-                        <span id="foundingPriceVal" class="text-2xl font-bold text-white w-12 text-center">$9</span>
-                        <button id="foundingPUp"   onclick="foundingAdjust('price',+1)" class="w-7 h-7 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-lg leading-none flex items-center justify-center transition">+</button>
+                    <div class="flex items-center gap-2">
+                        <button id="foundingPDown" onclick="foundingAdjust('price',-1)" class="w-6 h-6 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-base leading-none flex items-center justify-center transition">−</button>
+                        <span id="foundingPriceVal" class="text-xl font-bold text-white w-10 text-center">$10</span>
+                        <button id="foundingPUp"   onclick="foundingAdjust('price',+1)" class="w-6 h-6 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-base leading-none flex items-center justify-center transition">+</button>
                     </div>
-                    <p class="text-[10px] text-gray-600 mt-1">Also sets your per-subscriber revenue</p>
+                    <p class="text-[9px] text-gray-700 mt-1">revenue/sub</p>
                 </div>
-                <!-- Utility preview -->
-                <div class="bg-black/40 rounded-lg p-3">
-                    <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Score Preview</div>
-                    <div class="text-[11px] text-gray-400">For a genre-matched viewer:</div>
-                    <div class="text-2xl font-bold text-white"><span id="foundingUtilityPreview">4.2</span></div>
-                    <div class="text-[10px] text-gray-500 mt-1">Base subscribe chance: <span id="foundingSubPctPreview" class="text-yellow-400 font-bold">10%</span>/month</div>
+                <!-- Genre -->
+                <div class="bg-black/40 rounded-lg px-3 py-2 flex-[2]">
+                    <div class="text-[10px] text-gray-400 uppercase tracking-wide mb-1.5">Genre <span class="text-green-700 font-normal normal-case">(free)</span></div>
+                    <div class="flex flex-wrap gap-1.5">
+                        <button data-genre="Action"  onclick="foundingSetGenre('Action')"  class="founding-genre-btn text-[10px] px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-300 transition">Action</button>
+                        <button data-genre="Drama"   onclick="foundingSetGenre('Drama')"   class="founding-genre-btn text-[10px] px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-300 transition">Drama</button>
+                        <button data-genre="Comedy"  onclick="foundingSetGenre('Comedy')"  class="founding-genre-btn text-[10px] px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-300 transition">Comedy</button>
+                        <button data-genre="Kids"    onclick="foundingSetGenre('Kids')"    class="founding-genre-btn text-[10px] px-2 py-0.5 rounded border border-purple-500 text-purple-300 transition">Kids</button>
+                        <button data-genre="Sci-Fi"  onclick="foundingSetGenre('Sci-Fi')"  class="founding-genre-btn text-[10px] px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-300 transition">Sci-Fi</button>
+                    </div>
+                    <p class="text-[9px] text-gray-700 mt-1">Selected: <span id="foundingGenreVal" class="text-purple-300 font-bold">Kids</span> (+30% utility for matched viewers)</p>
+                </div>
+                <!-- Score Preview + Launch -->
+                <div class="bg-black/40 rounded-lg px-3 py-2 flex-1 flex flex-col justify-between min-w-[110px]">
+                    <div>
+                        <div class="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Score Preview</div>
+                        <div class="text-lg font-bold text-white"><span id="foundingUtilityPreview">4.2</span></div>
+                        <div class="text-[9px] text-gray-500">subscribe chance: <span id="foundingSubPctPreview" class="text-yellow-400 font-bold">10%</span>/mo</div>
+                    </div>
+                    <button id="foundingLaunchBtn" onclick="launchPlayerService()" class="mt-2 w-full bg-purple-700 hover:bg-purple-600 transition text-white font-bold py-1.5 rounded text-xs">
+                        Launch StreamCo →
+                    </button>
                 </div>
             </div>
-
-            <!-- Genre -->
-            <div class="mb-5">
-                <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Genre Focus <span class="text-green-600 font-normal normal-case">(free)</span></div>
-                <div class="flex flex-wrap gap-2">
-                    <button data-genre="Action"  onclick="foundingSetGenre('Action')"  class="founding-genre-btn text-xs px-3 py-1.5 rounded border border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-300 transition">Action</button>
-                    <button data-genre="Drama"   onclick="foundingSetGenre('Drama')"   class="founding-genre-btn text-xs px-3 py-1.5 rounded border border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-300 transition">Drama</button>
-                    <button data-genre="Comedy"  onclick="foundingSetGenre('Comedy')"  class="founding-genre-btn text-xs px-3 py-1.5 rounded border border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-300 transition">Comedy</button>
-                    <button data-genre="Kids"    onclick="foundingSetGenre('Kids')"    class="founding-genre-btn text-xs px-3 py-1.5 rounded border border-purple-500 text-purple-300 transition">Kids</button>
-                    <button data-genre="Sci-Fi"  onclick="foundingSetGenre('Sci-Fi')"  class="founding-genre-btn text-xs px-3 py-1.5 rounded border border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-300 transition">Sci-Fi</button>
-                </div>
-                <p class="text-[10px] text-gray-600 mt-1">Selected genre: <span id="foundingGenreVal" class="text-purple-300 font-bold">Kids</span> — gives +30% utility score for viewers who prefer that genre.</p>
-            </div>
-
-            <button id="foundingLaunchBtn" onclick="launchPlayerService()"
-                class="w-full bg-purple-700 hover:bg-purple-600 transition text-white font-bold py-3 rounded-lg text-sm">
-                Launch StreamCo →
-            </button>
         </div>
     </div>
 
-    <!-- ── Game: Budget Board (quarterly pause) ── -->
-    <div id="budgetBoardModal" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[110] hidden">
-        <div class="bg-[#0a0a0a] border border-purple-900/60 rounded-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <div class="flex justify-between items-center px-6 py-4 border-b border-gray-800">
-                <h2 class="text-base font-bold text-white">Quarterly Strategy Review</h2>
-                <span id="bbQuarterLabel" class="text-xs text-gray-500 border border-gray-700 rounded px-2 py-0.5"></span>
-            </div>
-            <div id="bbContent" class="p-6"></div>
-            <div class="px-6 pb-6">
-                <button onclick="closeBudgetBoard()" class="w-full bg-purple-700 hover:bg-purple-600 transition text-white font-bold py-3 rounded-lg text-sm">
-                    Next Quarter →
-                </button>
-            </div>
+    <!-- ── Game: Budget Board (inline top card, not a modal) ── -->
+    <div id="budgetBoardModal" class="hidden bg-[#0a0a0a] border-b border-purple-900/50">
+        <div class="px-10 sm:px-14 py-3 flex items-center justify-between border-b border-gray-900">
+            <h2 class="text-sm font-bold text-white">Quarterly Strategy Review</h2>
+            <span id="bbQuarterLabel" class="text-xs text-gray-500 border border-gray-700 rounded px-2 py-0.5"></span>
+        </div>
+        <div id="bbContent" class="px-10 sm:px-14 py-4"></div>
+        <div class="px-10 sm:px-14 pb-4">
+            <button onclick="closeBudgetBoard()" class="w-full bg-purple-700 hover:bg-purple-600 transition text-white font-bold py-2.5 rounded-lg text-sm">
+                Next Quarter →
+            </button>
         </div>
     </div>
 
@@ -2523,8 +2523,8 @@ const GAME_SCENARIOS = [
         goldTarget: 300,
         silverTarget: 250,
         bronzeTarget: 200,
-        startingCredits: 40,
-        foundingBudget: 14,
+        startingCredits: 20,
+        foundingBudget: 8,
         pauseInterval: 6,
         activeDuration: 30,
         preRunMonths: 12,
@@ -2557,7 +2557,8 @@ const GAME_SCENARIOS = [
 
 function foundingQualityCost(q) { return Math.max(0, q - 3) * 2; }
 function foundingVolumeCost(v)  { return Math.max(0, v - 3) * 1; }
-function foundingBudgetUsed(q, v) { return foundingQualityCost(q) + foundingVolumeCost(v); }
+function foundingPriceCost(p)   { return Math.max(0, 10 - p); }
+function foundingBudgetUsed(q, v, p) { return foundingQualityCost(q) + foundingVolumeCost(v) + foundingPriceCost(p); }
 
 // ── Mode toggle ────────────────────────────────────────────────────────────
 function setMode(mode) {
@@ -2706,10 +2707,10 @@ function startGameScenario(scenarioId) {
 }
 
 // ── Founding modal ─────────────────────────────────────────────────────────
-let foundingConfig = { quality: 5, volume: 5, price: 9, genre: 'Kids' };
+let foundingConfig = { quality: 4, volume: 4, price: 10, genre: 'Kids' };
 
 function showFoundingModal() {
-    foundingConfig = { quality: 5, volume: 5, price: 9, genre: 'Kids' };
+    foundingConfig = { quality: 4, volume: 4, price: 10, genre: 'Kids' };
     // Reset genre button highlights
     document.querySelectorAll('.founding-genre-btn').forEach(btn => {
         const g = btn.dataset.genre;
@@ -2719,13 +2720,15 @@ function showFoundingModal() {
         btn.classList.toggle('text-gray-400',     g !== 'Kids');
     });
     renderFoundingUI();
-    document.getElementById('gameFoundingModal').classList.remove('hidden');
+    const el = document.getElementById('gameFoundingModal');
+    document.querySelector('main').insertAdjacentElement('afterbegin', el);
+    el.classList.remove('hidden');
 }
 
 function renderFoundingUI() {
     const sc = gameState.scenario;
     const { quality, volume, price, genre } = foundingConfig;
-    const used = foundingBudgetUsed(quality, volume);
+    const used = foundingBudgetUsed(quality, volume, price);
     const remaining = sc.foundingBudget - used;
     const bonusCredits = remaining * 5;
 
@@ -2741,15 +2744,16 @@ function renderFoundingUI() {
     document.getElementById('foundingGenreVal').textContent   = genre;
     document.getElementById('foundingQualityCost').textContent = foundingQualityCost(quality);
     document.getElementById('foundingVolumeCost').textContent  = foundingVolumeCost(volume);
+    document.getElementById('foundingPriceCost').textContent   = foundingPriceCost(price);
 
-    const canIncQ = quality < 9 && (foundingBudgetUsed(quality + 1, volume) <= sc.foundingBudget);
+    const canIncQ = quality < 9 && (foundingBudgetUsed(quality + 1, volume, price) <= sc.foundingBudget);
     document.getElementById('foundingQUp').disabled   = !canIncQ;
     document.getElementById('foundingQDown').disabled = quality <= 3;
-    const canIncV = volume < 9 && (foundingBudgetUsed(quality, volume + 1) <= sc.foundingBudget);
+    const canIncV = volume < 9 && (foundingBudgetUsed(quality, volume + 1, price) <= sc.foundingBudget);
     document.getElementById('foundingVUp').disabled   = !canIncV;
     document.getElementById('foundingVDown').disabled = volume <= 3;
     document.getElementById('foundingPUp').disabled   = price >= 15;
-    document.getElementById('foundingPDown').disabled = price <= 5;
+    document.getElementById('foundingPDown').disabled = price <= 5 || foundingBudgetUsed(quality, volume, price - 1) > sc.foundingBudget;
 
     const sp = 1 + (-(parseFloat(document.getElementById('walletPressure').value)) * 0.1)
                  + (parseFloat(document.getElementById('cpi').value) * 0.04);
@@ -2764,16 +2768,17 @@ function foundingAdjust(prop, delta) {
     if (prop === 'quality') {
         const next = foundingConfig.quality + delta;
         if (next < 3 || next > 9) return;
-        if (foundingBudgetUsed(next, foundingConfig.volume) > sc.foundingBudget) return;
+        if (foundingBudgetUsed(next, foundingConfig.volume, foundingConfig.price) > sc.foundingBudget) return;
         foundingConfig.quality = next;
     } else if (prop === 'volume') {
         const next = foundingConfig.volume + delta;
         if (next < 3 || next > 9) return;
-        if (foundingBudgetUsed(foundingConfig.quality, next) > sc.foundingBudget) return;
+        if (foundingBudgetUsed(foundingConfig.quality, next, foundingConfig.price) > sc.foundingBudget) return;
         foundingConfig.volume = next;
     } else if (prop === 'price') {
         const next = foundingConfig.price + delta;
         if (next < 5 || next > 15) return;
+        if (foundingBudgetUsed(foundingConfig.quality, foundingConfig.volume, next) > sc.foundingBudget) return;
         foundingConfig.price = next;
     }
     renderFoundingUI();
@@ -2794,7 +2799,7 @@ function launchPlayerService() {
     document.getElementById('gameFoundingModal').classList.add('hidden');
 
     const sc = gameState.scenario;
-    const used = foundingBudgetUsed(foundingConfig.quality, foundingConfig.volume);
+    const used = foundingBudgetUsed(foundingConfig.quality, foundingConfig.volume, foundingConfig.price);
     const bonusCredits = (sc.foundingBudget - used) * 5;
     gameState.credits = sc.startingCredits + bonusCredits;
 
@@ -2850,6 +2855,9 @@ function onGameStep() {
         if (gameState.marketingBoostMonths === 0) playerSvc.utilityBonus = 0;
     }
 
+    // Quality decay: all services lose 0.05/month (floor 1.0). Requires continuous investment.
+    services.forEach(s => { s.quality = Math.max(1.0, s.quality - 0.05); });
+
     // Fire scenario market events (keyed to months after player entry)
     const relMonth = currentMonth - gameState.playerEntryMonth;
     gameState.scenario.events.forEach(evt => {
@@ -2862,9 +2870,9 @@ function onGameStep() {
             if (evt.stat === 'price')         target.price         = Math.max(1, target.price + evt.amount);
         }
         gameState.pendingEvent = evt.message;
-        renderServices();
     });
 
+    renderServices();
     renderGameHUD();
 }
 
@@ -2952,7 +2960,7 @@ function showBudgetBoard(savedEarned) {
     }).join('');
 
     const upgrades = [
-        { id:'ug-qual-up',   label:'+1 Quality',     sub:`${playerSvc.quality.toFixed(1)} → ${Math.min(10,playerSvc.quality+1).toFixed(1)}`,             cost:25,  off: playerSvc.quality >= 9.5 },
+        { id:'ug-qual-up',   label:'+1 Quality',     sub:`${playerSvc.quality.toFixed(1)} → ${Math.min(10,playerSvc.quality+1).toFixed(1)} · all services -0.3/period`,  cost:25,  off: playerSvc.quality >= 9.5 },
         { id:'ug-vol-up',    label:'+1 Volume',       sub:`${playerSvc.contentVolume.toFixed(1)} → ${Math.min(10,playerSvc.contentVolume+1).toFixed(1)}`, cost:15,  off: playerSvc.contentVolume >= 9.5 },
         { id:'ug-price-dn',  label:'-$1 Price',       sub:`$${playerSvc.price.toFixed(0)} → $${Math.max(3,playerSvc.price-1).toFixed(0)}`,                cost:10,  off: playerSvc.price <= 3 },
         { id:'ug-price-up',  label:'+$1 Price',       sub:`$${playerSvc.price.toFixed(0)} → $${Math.min(20,playerSvc.price+1).toFixed(0)}`,               cost:0,   off: playerSvc.price >= 20 },
@@ -2964,70 +2972,74 @@ function showBudgetBoard(savedEarned) {
     const upgradeGrid = upgrades.map(u => `
         <button id="${u.id}" onclick="applyUpgrade('${u.id}')"
             data-cost="${u.cost}"
-            class="upgrade-btn flex flex-col items-start p-3 rounded-lg border transition text-left w-full
+            class="upgrade-btn flex flex-col items-start px-2.5 py-2 rounded border transition text-left w-full
                    ${u.off ? 'border-gray-800 opacity-40 cursor-not-allowed' : (u.cost > 0 && u.cost > credits) ? 'border-gray-800 opacity-40 cursor-not-allowed' : 'border-gray-700 hover:border-purple-600'}"
             ${u.off || (u.cost > 0 && u.cost > credits) ? 'disabled' : ''}>
-            <div class="flex justify-between items-center w-full mb-0.5">
-                <span class="text-sm font-semibold text-white">${u.label}</span>
-                <span class="text-xs font-bold ${u.cost === 0 ? 'text-green-400' : 'text-yellow-300'}">${u.cost === 0 ? 'FREE' : u.cost+'¢'}</span>
+            <div class="flex justify-between items-center w-full">
+                <span class="text-xs font-semibold text-white">${u.label}</span>
+                <span class="text-[10px] font-bold ${u.cost === 0 ? 'text-green-400' : 'text-yellow-300'}">${u.cost === 0 ? 'FREE' : u.cost+'¢'}</span>
             </div>
-            <span class="text-[11px] text-gray-500">${u.sub}</span>
+            <span class="text-[9px] text-gray-600 mt-0.5 leading-tight">${u.sub}</span>
         </button>`).join('');
 
     document.getElementById('bbContent').innerHTML = `
-        ${marketEventHtml}
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div class="space-y-4">
+        ${marketEventHtml}<div class="grid grid-cols-4 gap-4">
+            <!-- Col 1: Progress -->
+            <div class="space-y-2">
+                <div class="text-[10px] text-gray-500 uppercase tracking-wide">Progress</div>
                 <div>
-                    <div class="flex justify-between text-xs mb-1.5">
-                        <span class="text-gray-400">Progress toward goal</span>
-                        <span class="font-bold text-white">${subs} / ${sc.winTarget}</span>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-gray-400">${subs} / ${sc.winTarget}</span>
+                        <span class="text-gray-600">${pct}%</span>
                     </div>
-                    <div class="w-full bg-gray-800 h-2.5 rounded-full overflow-hidden">
-                        <div class="h-2.5 rounded-full bg-purple-600 transition-all" style="width:${pct}%"></div>
+                    <div class="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
+                        <div class="h-2 rounded-full bg-purple-600 transition-all" style="width:${pct}%"></div>
                     </div>
-                    <div class="flex justify-between text-[10px] mt-1 text-gray-600">
-                        <span>${pct}% complete</span>
-                        <span>${monthsLeft > 0 ? monthsLeft+' months left' : 'FINAL QUARTER'}</span>
-                    </div>
+                    <div class="text-[10px] mt-1 text-gray-600">${monthsLeft > 0 ? monthsLeft+' months left' : 'FINAL QUARTER'}</div>
                     ${subs >= sc.goldTarget ? '<div class="text-[10px] text-yellow-300 mt-1 font-bold">Gold pace!</div>' :
-                      subs >= sc.silverTarget ? '<div class="text-[10px] text-gray-300 mt-1">Silver pace — push for Gold?</div>' : ''}
+                      subs >= sc.silverTarget ? '<div class="text-[10px] text-gray-300 mt-1">Silver pace</div>' : ''}
                 </div>
-                <div class="bg-black/40 rounded-lg p-3 text-xs space-y-1">
-                    <div class="text-[10px] text-gray-500 uppercase tracking-wide mb-1.5">Your Service — StreamCo</div>
-                    <div class="grid grid-cols-2 gap-x-3 gap-y-1">
-                        <div><span class="text-gray-500">Quality:</span> <span class="text-white font-bold">${playerSvc.quality.toFixed(1)}</span></div>
-                        <div><span class="text-gray-500">Volume:</span>  <span class="text-white font-bold">${playerSvc.contentVolume.toFixed(1)}</span></div>
-                        <div><span class="text-gray-500">Price:</span>   <span class="text-white font-bold">$${playerSvc.price.toFixed(0)}</span></div>
-                        <div><span class="text-gray-500">Genre:</span>   <span class="text-white font-bold">${playerSvc.genreFocus}</span></div>
+                <div class="bg-black/40 rounded-lg p-2.5 text-xs space-y-1 mt-2">
+                    <div class="text-[9px] text-gray-500 uppercase tracking-wide mb-1">StreamCo</div>
+                    <div class="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px]">
+                        <div><span class="text-gray-500">Q:</span> <span class="text-white font-bold">${playerSvc.quality.toFixed(1)}</span></div>
+                        <div><span class="text-gray-500">V:</span> <span class="text-white font-bold">${playerSvc.contentVolume.toFixed(1)}</span></div>
+                        <div><span class="text-gray-500">$:</span> <span class="text-white font-bold">${playerSvc.price.toFixed(0)}</span></div>
+                        <div><span class="text-gray-500">G:</span> <span class="text-white font-bold">${playerSvc.genreFocus}</span></div>
                     </div>
-                    ${gameState.marketingBoostMonths > 0 ? `<div class="text-[10px] text-green-400 mt-1">Marketing active: ${gameState.marketingBoostMonths} months left</div>` : ''}
-                </div>
-                <div class="bg-black/40 rounded-lg p-3">
-                    <div class="text-[10px] text-gray-500 uppercase tracking-wide mb-1.5">Competitors</div>
-                    ${competitorRows}
+                    ${gameState.marketingBoostMonths > 0 ? `<div class="text-[9px] text-green-400 mt-1">Mktg: ${gameState.marketingBoostMonths}mo left</div>` : ''}
                 </div>
             </div>
-            <div class="space-y-3">
-                <div class="flex justify-between items-baseline">
-                    <span class="text-[10px] text-gray-500 uppercase tracking-wide">Credits to spend</span>
-                    <div id="bbCreditsDisplay" class="text-2xl font-bold text-yellow-300">${credits}<span class="text-xs text-gray-500 ml-1">¢</span></div>
-                </div>
-                <div class="text-[10px] text-gray-600">+${earned} earned this period (${subs} subs × $${playerSvc.price.toFixed(0)} × rate)</div>
-                <div class="grid grid-cols-1 gap-2">${upgradeGrid}</div>
-                <div id="genrePivotSelector" class="hidden bg-black/40 rounded-lg p-3 space-y-2">
-                    <div class="text-xs text-gray-400">Choose new genre focus:</div>
-                    <div class="flex flex-wrap gap-2">
+            <!-- Col 2: Competitors -->
+            <div>
+                <div class="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Competitors</div>
+                ${competitorRows}
+            </div>
+            <!-- Col 3: Credits + earned -->
+            <div class="space-y-2">
+                <div class="text-[10px] text-gray-500 uppercase tracking-wide">Credits</div>
+                <div id="bbCreditsDisplay" class="text-3xl font-bold text-yellow-300">${credits}<span class="text-xs text-gray-500 ml-1">¢</span></div>
+                <div class="text-[10px] text-gray-600">+${earned}¢ this period<br>${subs} subs × $${playerSvc.price.toFixed(0)} × rate</div>
+            </div>
+            <!-- Col 4: Upgrades -->
+            <div>
+                <div class="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Upgrades</div>
+                <div class="grid grid-cols-2 gap-1.5">${upgradeGrid}</div>
+                <div id="genrePivotSelector" class="hidden bg-black/40 rounded-lg p-2 mt-2 space-y-1.5">
+                    <div class="text-[10px] text-gray-400">Choose new genre:</div>
+                    <div class="flex flex-wrap gap-1.5">
                         ${['Action','Drama','Comedy','Kids','Sci-Fi'].map(g => `
                         <button onclick="applyGenrePivot('${g}')"
-                            class="text-xs px-3 py-1 rounded border transition ${g === playerSvc.genreFocus ? 'border-gray-700 text-gray-600 cursor-not-allowed' : 'border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-300'}"
+                            class="text-[10px] px-2 py-0.5 rounded border transition ${g === playerSvc.genreFocus ? 'border-gray-700 text-gray-600 cursor-not-allowed' : 'border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-300'}"
                             ${g === playerSvc.genreFocus ? 'disabled' : ''}>${g}</button>`).join('')}
                     </div>
                 </div>
             </div>
         </div>`;
 
-    document.getElementById('budgetBoardModal').classList.remove('hidden');
+    const el = document.getElementById('budgetBoardModal');
+    document.querySelector('main').insertAdjacentElement('afterbegin', el);
+    el.classList.remove('hidden');
 }
 
 function applyUpgrade(upgradeId) {
@@ -3646,7 +3658,7 @@ function highlightEl(el) {
   // If the element is inside a closed drawer, open it first
   const paramsDrawer = document.getElementById('paramsDrawer');
   const checkpointsDrawer = document.getElementById('checkpointsDrawer');
-  if (paramsDrawer && paramsDrawer.contains(el) && paramsDrawer.classList.contains('-translate-x-full')) {
+  if (!gameState.active && paramsDrawer && paramsDrawer.contains(el) && paramsDrawer.classList.contains('-translate-x-full')) {
     toggleDrawer('params');
   } else if (checkpointsDrawer && checkpointsDrawer.contains(el) && checkpointsDrawer.classList.contains('translate-x-full')) {
     toggleDrawer('checkpoints');
@@ -3677,6 +3689,10 @@ function highlightEl(el) {
 // ── Tool execution ────────────────────────────────────────────────────────────
 // Each tool calls existing simulation functions/globals and syncs the slider UI.
 function executeTool(toolName, args) {
+  // Execution tools are disabled in game mode — players must make decisions themselves.
+  if (gameState.active && (toolName === 'setServiceParam' || toolName === 'setEconomy' || toolName === 'runForMonths')) {
+    return `✗ That action is disabled during the game — you need to make this call yourself.`;
+  }
   switch(toolName) {
     case 'setServiceParam': {
       const s = services[args.serviceIndex];
@@ -3838,7 +3854,10 @@ async function sendMessage(userText) {
     const toolCalls = extractToolCalls(fullText);
     if (toolCalls.length === 0) break;  // plain-text response — stop looping
 
-    assistantDiv.textContent = '';  // hide raw JSON
+    // Strip tool-call JSON blocks; preserve any surrounding plain text
+    const textOnly = fullText.replace(/\{(?:[^{}]|\{[^{}]*\})*\}/g, '').trim();
+    if (textOnly) assistantDiv.textContent = textOnly;
+    else assistantDiv.remove();
     const results = toolCalls.map(tc => executeTool(tc.tool, tc.args));
     results.forEach(r => addMessage('tool-result', r));
 

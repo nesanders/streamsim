@@ -46,7 +46,7 @@ A **Game** toggle in the top-right nav bar switches between Simulation mode and 
 **"The Disruption"** (the first scenario, ~3 min):
 
 1. **Pre-run** — 4 competitor services run for 12 months at 1.2× speed while you observe the market.
-2. **Founding** — configure your service (StreamCo) using a 14-point budget: Quality costs 2 pts/level, Volume costs 1 pt/level; price and genre are free. Unspent points become starting credits.
+2. **Founding** — configure your service (StreamCo) using an 8-point budget: Quality costs 2 pts/level above 3, Volume costs 1 pt/level above 3, and each $1 below $10 price costs 1 pt. Genre is free. Unspent points become starting credits.
 3. **Active phase** — 30 months of live play. Credits accumulate each month from `subscribers × price × 0.015`. The sim pauses every 6 months for a **Quarterly Budget Board** where you spend credits on upgrades: +1 Quality (25¢), +1 Volume (15¢), -$1 Price (10¢), +$1 free, Marketing Burst +40% subscribe rate for 6 months (20¢), Genre Pivot (30¢).
 4. **Market events** fire mid-game (competitor upgrades, price cuts) to force adaptation.
 5. **Win target**: 200+ subscribers = Bronze, 250+ = Silver, 300+ = Gold.
