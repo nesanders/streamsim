@@ -47,6 +47,7 @@
             <div class="hidden md:flex space-x-4 text-sm font-medium text-gray-400">
                 <span class="hover:text-white cursor-pointer" onclick="showModal('insights')">How It Works</span>
                 <span class="hover:text-white cursor-pointer" onclick="showModal('scenarios')">Scenarios</span>
+                <span class="hover:text-white cursor-pointer" onclick="window.openChat && window.openChat()">AI Assistant</span>
                 <span id="showBannerLink" class="hover:text-white cursor-pointer hidden" onclick="toggleBanner()">About</span>
             </div>
         </div>
@@ -69,6 +70,11 @@
                 <span class="font-bold text-white">StreamSim</span> is a market simulation: 1,000 virtual viewers each independently decide every month whether to subscribe to or cancel streaming services, based on price, content quality, genre preferences, and the economy.
                 Your job is to adjust the controls in the <b class="text-white">Sim Params</b> panel and run the simulation — then observe how individual decisions add up to market outcomes.
                 Use <span class="text-white font-medium">Scenarios</span> for guided activities, or <span class="text-white font-medium">How It Works</span> to see the math behind the model.
+            <div class="flex flex-wrap gap-2 mt-2 ml-0">
+                <button onclick="window.askChat && window.askChat('Walk me through the scenarios — what should I try first?')" class="text-xs px-3 py-1 rounded-full border border-gray-700 text-gray-400 hover:border-gray-300 hover:text-white transition bg-transparent cursor-pointer">Walk me through the scenarios</button>
+                <button onclick="window.askChat && window.askChat('What should I watch for after running the simulation?')" class="text-xs px-3 py-1 rounded-full border border-gray-700 text-gray-400 hover:border-gray-300 hover:text-white transition bg-transparent cursor-pointer">What should I watch for?</button>
+                <button onclick="window.askChat && window.askChat('How does the model decide whether an agent subscribes or churns? Walk me through the math.')" class="text-xs px-3 py-1 rounded-full border border-gray-700 text-gray-400 hover:border-gray-300 hover:text-white transition bg-transparent cursor-pointer">How does the model work?</button>
+            </div>
             </div>
             <button onclick="toggleBanner()" class="text-green-600 hover:text-white text-xs whitespace-nowrap pt-0.5 transition">Hide ✕</button>
         </div>
@@ -1541,6 +1547,7 @@ function showPauseCard(event) {
             ${statsHtml}
             ${hasSankey ? `<div class="mt-3 border-t border-gray-700 pt-2"><div class="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Subscriber Flow</div><div id="sankey-${event.month}"></div></div>` : ''}
             ${paramsHtml}
+            <button class="mt-3 text-xs text-blue-400 hover:text-blue-200 border border-blue-900/40 rounded px-3 py-1.5 transition w-full text-left" data-q="We\u2019re at month ${event.month}. You have the current subscriber counts, market shares, and trends in your context. Analyze what\u2019s actually happening in the market right now \u2014 which service is winning or losing, why, and what\u2019s driving it based on the model rules." onclick="window.askChat&&window.askChat(this.dataset.q)">Ask AI about this checkpoint →</button>
         </div>
     `;
     container.prepend(card);
@@ -2312,5 +2319,764 @@ initSim();
 <footer class="text-center text-xs text-gray-500 py-3 border-t border-gray-800 mt-4">
   Open source on <a href="https://github.com/nesanders/streamsim" target="_blank" class="underline hover:text-gray-300">github.com/nesanders/streamsim</a>
 </footer>
+<!-- ═══════════════════════════════════════════════════════
+     AI ASSISTANT — chat panel + floating toggle button
+     ═══════════════════════════════════════════════════════ -->
+<style>
+#chatToggle {
+  position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 200;
+  height: 44px; border-radius: 999px; padding: 0 1.1rem;
+  background: #E50914; border: none; cursor: pointer;
+  display: flex; align-items: center; gap: 0.45rem;
+  box-shadow: 0 4px 16px rgba(229,9,20,0.5);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+#chatToggle:hover { transform: scale(1.05); box-shadow: 0 6px 20px rgba(229,9,20,0.7); }
+#chatToggle svg { width: 20px; height: 20px; fill: white; flex-shrink: 0; }
+#chatToggle .chat-btn-label { color: white; font-size: 0.82rem; font-weight: 600; white-space: nowrap; }
+
+#chatPanel {
+  position: fixed; bottom: 5.5rem; right: 1.5rem; z-index: 200;
+  width: 380px; max-height: 540px;
+  background: #0a0a0a; border: 1px solid #333; border-radius: 12px;
+  display: flex; flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.8);
+  transition: opacity 0.15s, transform 0.15s;
+}
+#chatPanel.chat-hidden {
+  opacity: 0; pointer-events: none; transform: translateY(12px);
+}
+
+#chatHeader {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.75rem 1rem; border-bottom: 1px solid #222;
+  flex-shrink: 0;
+}
+#chatHeader .chat-title { font-size: 0.9rem; font-weight: 600; color: #fff; flex: 1; }
+#chatBackendBadge {
+  font-size: 0.65rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 0.15rem 0.45rem; border-radius: 4px;
+}
+#chatBackendBadge.webgpu { background: #0f2a1a; color: #86efac; }
+#chatBackendBadge.groq   { background: #1a1100; color: #fcd34d; }
+#chatBackendBadge.none   { background: #1a1a1a; color: #666; }
+#chatCloseBtn {
+  background: none; border: none; color: #666; cursor: pointer; padding: 2px;
+  font-size: 1.1rem; line-height: 1;
+}
+#chatCloseBtn:hover { color: #fff; }
+
+#chatKeySetup {
+  padding: 0.75rem 1rem; border-bottom: 1px solid #222;
+  background: #111; flex-shrink: 0;
+}
+#chatKeySetup p { font-size: 0.78rem; color: #888; margin-bottom: 0.5rem; }
+#chatKeySetup p a { color: #E50914; text-decoration: underline; }
+#chatKeyRow { display: flex; gap: 0.5rem; }
+#chatApiKey {
+  flex: 1; background: #000; border: 1px solid #333; border-radius: 6px;
+  padding: 0.4rem 0.6rem; color: #fff; font-size: 0.8rem; font-family: monospace;
+}
+#chatApiKey:focus { outline: none; border-color: #E50914; }
+#chatKeySaveBtn {
+  background: #222; border: 1px solid #444; color: #ccc; border-radius: 6px;
+  padding: 0.4rem 0.75rem; font-size: 0.78rem; cursor: pointer; white-space: nowrap;
+}
+#chatKeySaveBtn:hover { background: #333; }
+
+#chatProgress {
+  padding: 0.5rem 1rem; background: #111; border-bottom: 1px solid #222;
+  flex-shrink: 0;
+}
+#chatProgressBar {
+  height: 4px; border-radius: 2px; background: #E50914; width: 0%;
+  transition: width 0.2s;
+}
+#chatProgressLabel { font-size: 0.72rem; color: #666; margin-top: 0.3rem; }
+
+#chatMessages {
+  flex: 1; overflow-y: auto; padding: 0.75rem 1rem;
+  display: flex; flex-direction: column; gap: 0.6rem;
+  scrollbar-width: thin; scrollbar-color: #333 transparent;
+}
+.chat-msg {
+  max-width: 88%; font-size: 0.82rem; line-height: 1.5;
+  padding: 0.5rem 0.75rem; border-radius: 10px; white-space: pre-wrap; word-break: break-word;
+}
+.chat-msg.user     { background: #1c0707; border: 1px solid #5a0b0b; color: #fca5a5; align-self: flex-end; }
+.chat-msg.assistant { background: #141414; border: 1px solid #2a2a2a; color: #d1d5db; align-self: flex-start; }
+.chat-msg.system   { background: transparent; border: none; color: #555; font-size: 0.72rem; align-self: center; font-style: italic; }
+.chat-msg.tool-result { background: #0a1a0a; border: 1px solid #1a4a1a; color: #86efac; font-size: 0.75rem; font-family: monospace; align-self: flex-start; }
+
+#chatInputRow {
+  display: flex; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid #222; flex-shrink: 0;
+}
+#chatInput {
+  flex: 1; background: #111; border: 1px solid #333; border-radius: 8px;
+  padding: 0.5rem 0.75rem; color: #fff; font-size: 0.85rem; resize: none;
+  font-family: inherit; line-height: 1.4; max-height: 100px; overflow-y: auto;
+}
+#chatInput:focus { outline: none; border-color: #E50914; }
+#chatSendBtn {
+  background: #E50914; border: none; border-radius: 8px;
+  padding: 0.5rem 0.85rem; color: white; cursor: pointer; font-size: 0.85rem; font-weight: 600;
+  align-self: flex-end; flex-shrink: 0;
+}
+#chatSendBtn:hover:not(:disabled) { background: #c40812; }
+#chatSendBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+@keyframes chatPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(250,204,21,0.9), 0 0 0 0 rgba(250,204,21,0.4); }
+  50%  { box-shadow: 0 0 0 6px rgba(250,204,21,0.5), 0 0 16px 8px rgba(250,204,21,0.15); }
+  100% { box-shadow: 0 0 0 10px rgba(250,204,21,0), 0 0 0 0 rgba(250,204,21,0); }
+}
+.chat-highlight {
+  outline: 2px solid #facc15 !important;
+  outline-offset: 4px;
+  border-radius: 4px;
+  animation: chatPulse 1s ease 4;
+}
+#chatGroqControls {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.35rem 0.75rem; background: #111; border-bottom: 1px solid #222; flex-shrink: 0;
+}
+#chatModelSelect {
+  flex: 1; background: #1e1e1e; color: #ccc; border: 1px solid #383838;
+  border-radius: 4px; padding: 0.2rem 0.35rem; font-size: 0.72rem;
+}
+#chatRateLimit { color: #555; white-space: nowrap; font-size: 0.68rem; }
+#chatRateLimit.warn { color: #f59e0b; }
+</style>
+
+<!-- Chat toggle button -->
+<button id="chatToggle" title="AI Assistant" aria-label="Open AI assistant">
+  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
+  </svg>
+  <span class="chat-btn-label">Ask AI</span>
+</button>
+
+<!-- Chat panel -->
+<div id="chatPanel" class="chat-hidden">
+  <div id="chatHeader">
+    <span class="chat-title">StreamSim Assistant</span>
+    <span id="chatBackendBadge" class="none">detecting…</span>
+    <button id="chatCloseBtn" title="Close">✕</button>
+  </div>
+
+  <!-- Groq model selector + rate limit — shown when using Groq backend -->
+  <div id="chatGroqControls" style="display:none">
+    <select id="chatModelSelect" title="Switch Groq model (each has its own rate limit)">
+      <option value="llama-3.3-70b-versatile">Llama 3.3 70B (best)</option>
+      <option value="meta-llama/llama-4-scout-17b-16e-instruct">Llama 4 Scout 17B</option>
+      <option value="meta-llama/llama-4-maverick-17b-128e-instruct">Llama 4 Maverick 17B</option>
+      <option value="llama-3.1-8b-instant">Llama 3.1 8B (fastest)</option>
+    </select>
+    <span id="chatRateLimit"></span>
+  </div>
+
+  <!-- Groq API key setup — shown only when WebGPU unavailable and no key yet -->
+  <div id="chatKeySetup" style="display:none">
+    <p>No WebGPU on this device. Enter a free <a href="https://console.groq.com" target="_blank">Groq API key</a> to use a cloud model instead. No credit card required.</p>
+    <div id="chatKeyRow">
+      <input id="chatApiKey" type="password" placeholder="gsk_…" spellcheck="false" autocomplete="off">
+      <button id="chatKeySaveBtn">Save key</button>
+    </div>
+  </div>
+
+  <!-- Model download progress — shown during WebGPU model load -->
+  <div id="chatProgress" style="display:none">
+    <div id="chatProgressBar"></div>
+    <div id="chatProgressLabel">Loading…</div>
+  </div>
+
+  <div id="chatMessages"></div>
+
+  <div id="chatInputRow">
+    <textarea id="chatInput" rows="1" placeholder="Ask about the simulation…"></textarea>
+    <button id="chatSendBtn" disabled>Send</button>
+  </div>
+</div>
+
+<script type="module">
+// ── Why a module script? ──────────────────────────────────────────────────────
+// We need ES module imports for Transformers.js (WebGPU path).
+// The existing simulation script is a classic (non-module) script so all its
+// variables (services, agents, currentMonth, etc.) are on the window object
+// and accessible here as plain globals.
+
+import { pipeline, TextStreamer } from
+  'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.2';
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const panel     = document.getElementById('chatPanel');
+const toggle    = document.getElementById('chatToggle');
+const closeBtn  = document.getElementById('chatCloseBtn');
+const badge     = document.getElementById('chatBackendBadge');
+const keySetup  = document.getElementById('chatKeySetup');
+const groqControls  = document.getElementById('chatGroqControls');
+const modelSelect   = document.getElementById('chatModelSelect');
+const rateLimitEl   = document.getElementById('chatRateLimit');
+const progress  = document.getElementById('chatProgress');
+const progressBar   = document.getElementById('chatProgressBar');
+const progressLabel = document.getElementById('chatProgressLabel');
+const messages  = document.getElementById('chatMessages');
+const input     = document.getElementById('chatInput');
+const sendBtn   = document.getElementById('chatSendBtn');
+
+// ── Panel open/close ──────────────────────────────────────────────────────────
+toggle.addEventListener('click', () => panel.classList.toggle('chat-hidden'));
+closeBtn.addEventListener('click', () => panel.classList.add('chat-hidden'));
+
+// Expose to classic script scope so nav link, chips, and checkpoint buttons can call in
+window.openChat = () => panel.classList.remove('chat-hidden');
+window.askChat  = (question) => {
+  panel.classList.remove('chat-hidden');
+  // Short delay so the panel is visible before the message appears
+  setTimeout(() => sendMessage(question), 80);
+};
+
+// ── Backend detection ─────────────────────────────────────────────────────────
+let backend   = 'none';  // 'webgpu' | 'groq' | 'none'
+let groqKey   = localStorage.getItem('streamsim_groq_key') || '';
+let groqModel = localStorage.getItem('streamsim_groq_model') || 'llama-3.3-70b-versatile';
+let generator = null;    // Transformers.js pipeline, loaded lazily on first message
+let modelLoaded = false;
+
+// Sync selector to persisted model choice and save on change
+modelSelect.value = groqModel;
+modelSelect.addEventListener('change', () => {
+  groqModel = modelSelect.value;
+  localStorage.setItem('streamsim_groq_model', groqModel);
+  rateLimitEl.textContent = '';  // clear stale limit from previous model
+  rateLimitEl.className = '';
+});
+
+async function detectBackend() {
+  if ('gpu' in navigator) {
+    try {
+      const adapter = await navigator.gpu.requestAdapter();
+      if (adapter) { backend = 'webgpu'; return; }
+    } catch(_) {}
+  }
+  backend = 'groq';
+}
+
+await detectBackend();
+
+if (backend === 'webgpu') {
+  badge.textContent = 'WebGPU';
+  badge.className   = 'webgpu';
+} else {
+  badge.textContent = 'Groq API';
+  badge.className   = 'groq';
+  groqControls.style.display = 'flex';
+  if (!groqKey) {
+    keySetup.style.display = 'block';
+  } else {
+    sendBtn.disabled = false;
+    addMessage('system', 'Groq key loaded from previous session.');
+  }
+}
+
+// Groq key save
+document.getElementById('chatKeySaveBtn').addEventListener('click', () => {
+  const v = document.getElementById('chatApiKey').value.trim();
+  if (!v.startsWith('gsk_')) {
+    addMessage('system', 'Key should start with gsk_ — check and try again.');
+    return;
+  }
+  groqKey = v;
+  localStorage.setItem('streamsim_groq_key', groqKey);
+  keySetup.style.display = 'none';
+  sendBtn.disabled = false;
+  addMessage('system', 'Key saved. Ask me anything about the simulation.');
+});
+
+if (backend === 'webgpu') sendBtn.disabled = false;
+
+// ── Message helpers ───────────────────────────────────────────────────────────
+function addMessage(role, text) {
+  const div = document.createElement('div');
+  div.className = `chat-msg ${role}`;
+  div.textContent = text;
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+  return div;
+}
+
+// ── Simulation state snapshot for LLM context ────────────────────────────────
+// This runs before every LLM call so the model always reasons about the
+// current sim state, not a stale snapshot.
+function buildContext() {
+  // Economy inputs + computed factor
+  const ig  = parseFloat(document.getElementById('walletPressure')?.value ?? 0);
+  const cpi = parseFloat(document.getElementById('cpi')?.value ?? 2);
+  const M   = (1 + (-ig * 0.10) + (cpi * 0.04)).toFixed(2);
+
+  // Subscription stacking distribution
+  const dist = [0, 0, 0, 0];
+  agents.forEach(a => dist[Math.min(a.subscriptions.length, 3)]++);
+  const subscribed = agents.length - dist[0];
+
+  // Age segment: subscribed count / total per cohort
+  const ageTotals = {}, ageSubs = {};
+  AGE_SEGMENTS.forEach(seg => { ageTotals[seg] = 0; ageSubs[seg] = 0; });
+  agents.forEach(a => {
+    ageTotals[a.ageSegment]++;
+    if (a.subscriptions.length > 0) ageSubs[a.ageSegment]++;
+  });
+  const ageStr = AGE_SEGMENTS
+    .map(seg => `${seg.replace('Millennial','Mil')} ${ageSubs[seg]}/${ageTotals[seg]}`)
+    .join(', ');
+
+  // Genre weights
+  const genreStr = Object.entries(genreWeights)
+    .map(([k, v]) => `${k}=${v.toFixed(1)}`).join(', ');
+
+  // Per-service: current counts, market share, and 6-month trend
+  const latest    = history.length > 0 ? history[history.length - 1] : null;
+  const trendBase = history.length > 6 ? history[history.length - 7] : (history[0] ?? null);
+  const counts    = latest?.counts ?? {};
+  const oldCounts = trendBase?.counts ?? {};
+  const totalSubs = Object.values(counts).reduce((a, b) => a + b, 0);
+
+  const svcLines = services.map((s, i) => {
+    const n     = counts[s.id] ?? 0;
+    const share = totalSubs > 0 ? (n / totalSubs * 100).toFixed(1) + '%' : '—';
+    const delta = history.length > 1
+      ? (n - (oldCounts[s.id] ?? 0) >= 0
+          ? `+${n - (oldCounts[s.id] ?? 0)}`
+          : `${n - (oldCounts[s.id] ?? 0)}`)
+      : '—';
+    const tag = s.joinedMonth > 0 ? ` [entered m${s.joinedMonth}]` : '';
+    return `  ${i}. ${s.name}${tag}: $${s.price.toFixed(2)} q=${s.quality.toFixed(1)} v=${s.contentVolume.toFixed(1)} ${s.genreFocus} → ${n} subs ${share} Δ6mo=${delta}`;
+  }).join('\n');
+
+  // Active scenario details
+  let scenarioName = 'none';
+  let scenarioExtra = '';
+  if (activeScenario !== null) {
+    const sc = getScenarios()[activeScenario];
+    if (sc) {
+      scenarioName = sc.title;
+      const highlights = sc.highlights?.map(h => `  - ${h}`).join('\n') ?? '';
+      const nextPause = sc.params?.pauseEvents?.find(p => p.month > currentMonth);
+      const pauseNote = nextPause ? `  Next pause: month ${nextPause.month} — "${nextPause.title}"` : '';
+      scenarioExtra = (highlights || pauseNote)
+        ? `\nScenario details:\n${highlights}${pauseNote ? '\n' + pauseNote : ''}`
+        : '';
+    }
+  }
+
+  return `SIM — Month ${currentMonth}/${MONTHS} (${isRunning ? 'running' : 'paused'}) | Scenario: ${scenarioName}
+Economy: incomeGrowth=${ig} inflation=${cpi} → M=${M} (neutral=1.0; <1 boom; >1 recession)
+Agents: ${subscribed}/1000 subscribed | 0-subs:${dist[0]} 1-sub:${dist[1]} 2-subs:${dist[2]} 3-subs:${dist[3]}
+Age (sub/total): ${ageStr}
+Genre weights: ${genreStr}
+Services (index name: price q v genre → subs share Δ6months):
+${svcLines}${scenarioExtra}`;
+}
+
+const BASE_SYSTEM = `You are a pedagogical assistant for StreamSim, a high school classroom simulation of a streaming video market.
+IMPORTANT: Never mention real companies, brands, or services (Netflix, Spotify, Disney+, Hulu, Amazon, Apple, YouTube, etc.). Always refer only to the fictional services in the sim (NetStream, CineMax, GlowTV, EdgeVideo, PrimeWatch) or speak generically ("a streaming service", "the market").
+
+
+AUDIENCE: High school students. Write like you're explaining to a smart 16-year-old who has never studied economics. Simple words, short sentences, active voice. No jargon — if you must use a term like "utility" or "churn", define it in the same sentence.
+
+LANGUAGE RULES:
+- Say "people cancel" not "agents churn". Say "sign up" not "subscribe". Say "the score" not "utility". Say "how much money people have" not "income elasticity".
+- Use everyday comparisons: "think of it like..." or "it's similar to..." — but never reference real brands.
+- When explaining a formula, lead with the plain-English idea FIRST, then the math if needed. Example: "The sim scores how good a deal each service is — better content and lower price = higher score, and agents are more likely to sign up."
+- If the answer involves a number from the sim, say what that number means in plain English, not just what it is.
+
+TEACHING PHILOSOPHY:
+- Your primary job is to TEACH, not to operate the sim for students.
+- If a student asks how to change something: call highlightElement (bare JSON only). On your next turn, explain what the control does, what to try, and what to watch for — in plain student-friendly language.
+- Only use execution tools (setServiceParam, setEconomy, runForMonths) when the student explicitly says "do it" / "for me", or for multi-step experiments.
+- When interpreting results: read the numbers from your context and explain what they mean — don't tell the student to "look at" the numbers, tell them what those numbers say. Example: "NetStream has 230 subscribers (41% of the market) and grew by +60 in the last 6 months — that's because its quality is 8.5, which makes people much less likely to cancel."
+
+GOOD example (after highlighting a price slider):
+"Drag it to the right to charge more. A higher price makes the service feel less worth it, so more people will cancel — watch the line on the chart dip after you run a few months."
+
+BAD examples (never do this):
+"Increasing the price parameter reduces the utility score, causing elevated churn probability among price-sensitive agents." ← jargon
+"You can find this explained in the How It Works section." ← deflection — answer it yourself instead
+{"tool":"highlightElement","args":{"target":"how-it-works"}} ← pointing to documentation instead of explaining
+
+RESPONSE FORMAT:
+- Bare JSON only when calling a tool (no surrounding text).
+- Plain text for teaching — max 2 sentences. Never recap that you highlighted something, just teach.
+- One tool call per response.
+
+TOOLS — use ONLY the exact JSON shown, nothing else in the response:
+{"tool":"highlightElement","args":{"target":"<name>"}}
+  Scrolls to, opens the drawer if needed, and pulses a UI element. Targets: run, restart, randomize, income-growth, inflation, duration, service-count, subscriber-chart, distribution-chart, genre-sliders, scenarios, how-it-works, price:N, quality:N, volume:N, genre-focus:N (N = service index 0–4).
+{"tool":"setServiceParam","args":{"serviceIndex":<0–4>,"param":"<price|quality|volume>","value":<number>}}
+{"tool":"setEconomy","args":{"incomeGrowth":<-5 to 5>,"inflation":<0 to 8>}}
+{"tool":"runForMonths","args":{"months":<1–60>}}
+{"tool":"loadScenario","args":{"index":<0–3>}}
+  Scenario indices: 0=Price War, 1=Recession, 2=New Entrant, 3=Content Boom.
+{"tool":"resetSim","args":{}}
+
+Never mix text with a JSON tool call. Never chain two JSON objects.
+
+INTENT RULES — read carefully:
+- "how does X work", "explain X", "walk me through X", "what is X" → answer DIRECTLY in plain English. Do NOT call highlightElement. Do NOT say "check the modal" or "look at the How It Works section". Just explain it yourself, right here, in student-friendly language.
+- "where is X", "show me X", "how do I find X" → use highlightElement to point to it.
+- "how do I change X" → highlightElement to show the control, then explain what to do with it.
+- "load", "start", "run", "apply" scenario → use loadScenario tool.
+- "change X to Y for me" / "do it" / "apply it" → execution tool.
+
+SCENARIO CATALOG (explain from here without loading):
+A (index 0) — Price War: 3 services, identical quality (q=7, v=7), prices $8/$14/$20, same economy.
+  Central question: does cheaper always win, or does genre fit matter more?
+  Tell students to watch market share lines diverge and try changing genre focus mid-run.
+B (index 1) — Recession Shock: stable start (m0–12), auto-pauses at m12 to trigger income crash (incomeGrowth→−5).
+  Central question: which services survive a recession — cheap/high-volume or premium/high-quality?
+  Tell students the high-quality service (q=9) is sticky but expensive; watch the cheap one (q=6, $8) hold volume.
+C (index 2) — Niche vs. Mass Market: q=9 Sci-Fi niche at $14 vs. q=4 high-volume Drama at $10 vs. balanced mid.
+  Drama-heavy audience (weight=3). Pauses at m24 for reflection. Question: does premium niche beat mass market?
+  Genre weights are key — try boosting Sci-Fi weight to see the niche service catch up.
+D (index 3) — New Market Entrant: Drama+Action duopoly, Kids genre heavily underserved (weight=4). Pauses at m12.
+  Central question: can a late entrant targeting the unserved gap overtake incumbents?
+  Tell students to add a 3rd service at m12, set it to Kids, and watch whether timing and quality determine success.
+
+HOW THE MODEL WORKS (use this to explain why things happen — always translate to plain English for students):
+Deal score = (Quality×0.6 + Volume×0.4) × GenreBonus − (Price × Sensitivity × EconomyPressure)
+  GenreBonus: ×1.3 if the service's genre matches what the person likes, otherwise ×1.0
+  EconomyPressure M = 1 + (−IncomeGrowth×0.10) + (Inflation×0.04): above 1.0 = harder times, below 1.0 = good times
+Sign-up chance per month: score>5 → 40%; score 3–5 → 10%; score<3 → 2%. Each extra subscription they already have cuts this further (×0.65, then ×0.40) — people are less likely to add a 3rd service than a 1st.
+Cancellation chance: quality≥7 → low and stable; quality<4 → 35% chance every month (very leaky); in between → depends on the deal score. Older people cancel less: Boomers ×0.70, Gen X ×0.85, Gen Z ×1.30.`;
+
+// ── UI element map for highlightElement tool ──────────────────────────────────
+// Maps logical names the LLM uses → CSS selectors for real DOM elements.
+const ELEMENT_MAP = {
+  'run':                '#runBtn',
+  'restart':            '#resetBtn',
+  'randomize':          '#resetParamsBtn',
+  'income-growth':      '#walletPressure',
+  'inflation':          '#cpi',
+  'duration':           '#durationSlider',
+  'service-count':      '#kCount',
+  'subscriber-chart':   '#mainChart',
+  'distribution-chart': '#distChart',
+  'genre-sliders':      '#genreSliders',
+  'scenarios':          'span[onclick*="scenarios"]',
+  'how-it-works':       'span[onclick*="insights"]',
+};
+
+function highlightEl(el) {
+  // If the element is inside a closed drawer, open it first
+  const paramsDrawer = document.getElementById('paramsDrawer');
+  const checkpointsDrawer = document.getElementById('checkpointsDrawer');
+  if (paramsDrawer && paramsDrawer.contains(el) && paramsDrawer.classList.contains('-translate-x-full')) {
+    toggleDrawer('params');
+  } else if (checkpointsDrawer && checkpointsDrawer.contains(el) && checkpointsDrawer.classList.contains('translate-x-full')) {
+    toggleDrawer('checkpoints');
+  }
+  // Delay so the drawer finishes sliding open before scrolling
+  setTimeout(() => {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    // Apply the highlight class directly to the element so it follows scroll
+    // and stays within its natural stacking context (no z-index conflicts with drawers).
+    // Inline elements (e.g. nav <span>s) don't render outline/box-shadow correctly,
+    // so temporarily promote them to inline-block.
+    const computed = window.getComputedStyle(el);
+    const wasInline = computed.display === 'inline';
+    if (wasInline) el.style.display = 'inline-block';
+
+    el.classList.remove('chat-highlight');
+    void el.offsetWidth;  // force reflow so animation restarts cleanly
+    el.classList.add('chat-highlight');
+
+    setTimeout(() => {
+      el.classList.remove('chat-highlight');
+      if (wasInline) el.style.display = '';
+    }, 4500);
+  }, 350);
+}
+
+// ── Tool execution ────────────────────────────────────────────────────────────
+// Each tool calls existing simulation functions/globals and syncs the slider UI.
+function executeTool(toolName, args) {
+  switch(toolName) {
+    case 'setServiceParam': {
+      const s = services[args.serviceIndex];
+      if (!s) return `No service at index ${args.serviceIndex}.`;
+      const propMap = { price: 'price', quality: 'quality', volume: 'contentVolume' };
+      const prop = propMap[args.param];
+      if (!prop) return `Unknown param "${args.param}". Use price, quality, or volume.`;
+      const clamped = args.param === 'price'
+        ? Math.min(20, Math.max(5,  args.value))
+        : Math.min(10, Math.max(1, args.value));
+      s[prop] = clamped;
+      // Sync the slider element so the UI matches
+      const slider = document.querySelector(`input[data-id="${s.id}"][data-prop="${prop}"]`);
+      if (slider) { slider.value = clamped; slider.dispatchEvent(new Event('input')); }
+      renderServiceProfiles();
+      return `✓ Set ${s.name}'s ${args.param} to ${clamped}.`;
+    }
+    case 'setEconomy': {
+      const igEl  = document.getElementById('walletPressure');
+      const cpiEl = document.getElementById('cpi');
+      if (igEl)  { igEl.value  = args.incomeGrowth; igEl.dispatchEvent(new Event('input')); }
+      if (cpiEl) { cpiEl.value = args.inflation;    cpiEl.dispatchEvent(new Event('input')); }
+      return `✓ Economy set: income growth = ${args.incomeGrowth}, inflation = ${args.inflation}.`;
+    }
+    case 'loadScenario': {
+      if (args.index < 0 || args.index > 3) return `Scenario index must be 0–3.`;
+      loadScenario(args.index);
+      return `✓ Scenario ${args.index} loaded.`;
+    }
+    case 'resetSim': {
+      initSim({ keepParams: true });
+      return '✓ Simulation reset.';
+    }
+    case 'runForMonths': {
+      const n = Math.min(Math.max(1, args.months), 60);
+      // currentMonth, MONTHS, isRunning, simInterval are top-level `let` in the
+      // classic script — accessible by bare name from modules (shared global
+      // lexical scope), but NOT via window.* (that only holds var/function).
+      const startMonth = currentMonth;
+      const wasRunning = isRunning;
+      if (wasRunning) { clearInterval(simInterval); isRunning = false; }
+      for (let i = 0; i < n && currentMonth < MONTHS; i++) step();
+      if (wasRunning) { simInterval = setInterval(step, 200); isRunning = true; }
+      const stepped = currentMonth - startMonth;
+      return `✓ Simulation advanced from month ${startMonth} to month ${currentMonth} (${stepped} steps). Updated state is in the system prompt.`;
+    }
+    case 'highlightElement': {
+      const target = (args.target || '').toLowerCase();
+      // Service-specific sliders: target = "price:0", "quality:2", "volume:1"
+      const svcMatch = target.match(/^(price|quality|volume):(\d+)$/);
+      if (svcMatch) {
+        const propMap = { price: 'price', quality: 'quality', volume: 'contentVolume' };
+        const s = services[parseInt(svcMatch[2])];
+        if (!s) return `No service at index ${svcMatch[2]}.`;
+        const el = document.querySelector(`input[data-id="${s.id}"][data-prop="${propMap[svcMatch[1]]}"]`);
+        if (!el) return `Slider not found for ${s.name} ${svcMatch[1]}.`;
+        highlightEl(el);
+        return `✓ Highlighted ${s.name}'s ${svcMatch[1]} slider.`;
+      }
+      // Genre-focus dropdown: target = "genre-focus:0"
+      const genreMatch = target.match(/^genre-focus:(\d+)$/);
+      if (genreMatch) {
+        const s = services[parseInt(genreMatch[1])];
+        if (!s) return `No service at index ${genreMatch[1]}.`;
+        const el = document.querySelector(`select[data-id="${s.id}"][data-prop="genreFocus"]`);
+        if (!el) return `Genre-focus dropdown not found for ${s.name}.`;
+        highlightEl(el);
+        return `✓ Highlighted ${s.name}'s genre-focus dropdown.`;
+      }
+      const sel = ELEMENT_MAP[target];
+      if (!sel) return `Unknown element "${target}". Valid targets: ${Object.keys(ELEMENT_MAP).join(', ')}, or "price:N"/"quality:N"/"volume:N" for service sliders.`;
+      const el = document.querySelector(sel);
+      if (!el) return `Element "${target}" not found in DOM.`;
+      highlightEl(el);
+      return `✓ Highlighted "${target}".`;
+    }
+    default:
+      return `Unknown tool "${toolName}".`;
+  }
+}
+
+// ── Parse tool calls from assistant text ─────────────────────────────────────
+// The model sometimes emits multiple JSON objects or mixes them with prose.
+// We scan for all balanced {...} substrings and collect every valid tool call.
+// Using a balanced-brace scanner avoids the greedy-regex problem where
+// /\{[\s\S]*\}/ spans from the first { to the last } and swallows everything
+// between multiple JSON objects, making the combined string unparseable.
+function extractToolCalls(text) {
+  const calls = [];
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] !== '{') { i++; continue; }
+    // Walk forward counting braces to find the matching closing brace
+    let depth = 0, j = i;
+    while (j < text.length) {
+      if (text[j] === '{') depth++;
+      else if (text[j] === '}') { depth--; if (depth === 0) break; }
+      j++;
+    }
+    const candidate = text.slice(i, j + 1);
+    try {
+      const obj = JSON.parse(candidate);
+      if (obj.tool && obj.args !== undefined) calls.push(obj);
+    } catch(_) {}
+    i = j + 1;
+  }
+  return calls;
+}
+
+// ── Conversation history (kept for multi-turn context) ────────────────────────
+const conversation = [];
+
+// ── Send a message ────────────────────────────────────────────────────────────
+// Implements an agentic loop: after executing tool calls, the model's next turn
+// receives the tool results and can either call more tools or produce a final
+// plain-text reply. The loop runs up to MAX_AGENT_ITERS times as a safety cap.
+const MAX_AGENT_ITERS = 8;
+
+async function sendMessage(userText) {
+  if (!userText.trim()) return;
+  sendBtn.disabled = true;
+  input.value = '';
+  input.style.height = 'auto';
+
+  addMessage('user', userText);
+  conversation.push({ role: 'user', content: userText });
+
+  for (let iter = 0; iter < MAX_AGENT_ITERS; iter++) {
+    // Refresh sim state in the system prompt on every iteration so the model
+    // sees current subscriber counts / economy even after tool side-effects.
+    const systemMsg = { role: 'system', content: `${BASE_SYSTEM}\n\n${buildContext()}` };
+
+    const assistantDiv = addMessage('assistant', '');
+    let fullText = '';
+
+    try {
+      if (backend === 'webgpu') {
+        fullText = await runWebGPU([systemMsg, ...conversation], chunk => {
+          fullText += chunk;
+          assistantDiv.textContent = fullText;
+          messages.scrollTop = messages.scrollHeight;
+        });
+      } else {
+        fullText = await runGroq([systemMsg, ...conversation], chunk => {
+          fullText += chunk;
+          assistantDiv.textContent = fullText;
+          messages.scrollTop = messages.scrollHeight;
+        });
+      }
+    } catch(err) {
+      assistantDiv.textContent = `Error: ${err.message}`;
+      break;
+    }
+
+    conversation.push({ role: 'assistant', content: fullText });
+
+    // Check for tool calls. If found, execute them, record results in conversation,
+    // and loop so the model can continue. If none found, we have a plain reply — done.
+    const toolCalls = extractToolCalls(fullText);
+    if (toolCalls.length === 0) break;  // plain-text response — stop looping
+
+    assistantDiv.textContent = '';  // hide raw JSON
+    const results = toolCalls.map(tc => executeTool(tc.tool, tc.args));
+    results.forEach(r => addMessage('tool-result', r));
+
+    // Feed tool results back as a user turn so the model can react to them.
+    // Using role:'user' keeps us compatible with models that lack a 'tool' role.
+    // Choose a follow-up instruction based on which tools ran.
+    // highlightElement: the green bubble already confirms the action — the model's
+    //   job is to TEACH, not to recap. Give a different instruction.
+    // Other successes: brief confirmation only.
+    // Failures: explain and suggest fix.
+    const resultSummary = results.join('\n');
+    const allHighlight = toolCalls.every(tc => tc.tool === 'highlightElement');
+    const allDone      = results.every(r => r.startsWith('✓'));
+    const instruction  = allHighlight
+      ? 'The element is now pulsing on screen — do NOT say that. Instead, in 1–2 sentences teach the student: what this control does, what value to try, and what effect to watch for in the simulation.'
+      : allDone
+        ? 'Done. One sentence confirming what changed. No further suggestions.'
+        : 'One or more actions failed (see above). Explain briefly and suggest a fix.';
+    conversation.push({ role: 'user', content: `Tool results:\n${resultSummary}\n\n${instruction}` });
+  }
+
+  sendBtn.disabled = false;
+}
+
+// ── WebGPU backend ────────────────────────────────────────────────────────────
+const fileTotals = {}, fileLoaded = {};
+
+function updateModelProgress() {
+  const total  = Object.values(fileTotals).reduce((a, b) => a + b, 0);
+  const loaded = Object.values(fileLoaded).reduce((a, b) => a + b, 0);
+  if (total > 0) progressBar.style.width = Math.min(100, loaded / total * 100).toFixed(0) + '%';
+}
+
+async function ensureWebGPULoaded() {
+  if (modelLoaded) return;
+  progress.style.display = 'block';
+  progressLabel.textContent = 'Downloading Qwen3-0.6B… (first time only)';
+  generator = await pipeline('text-generation', 'onnx-community/Qwen3-0.6B-ONNX', {
+    device: 'webgpu',
+    dtype: 'q4f16',
+    progress_callback: p => {
+      if (p.status === 'initiate' && p.total) {
+        fileTotals[p.file] = p.total; fileLoaded[p.file] = 0; updateModelProgress();
+      } else if (p.status === 'progress') {
+        if (p.total)  fileTotals[p.file] = p.total;
+        if (p.loaded) fileLoaded[p.file] = p.loaded;
+        updateModelProgress();
+        const mb = Object.values(fileLoaded).reduce((a,b)=>a+b,0);
+        progressLabel.textContent = `Downloading… ${(mb/1e6).toFixed(0)} MB`;
+      } else if (p.status === 'done') {
+        progressLabel.textContent = 'Initializing GPU…';
+      } else if (p.status === 'ready') {
+        progressBar.style.width = '100%';
+        progressBar.style.background = '#22c55e';
+        progressLabel.textContent = 'Model ready.';
+        setTimeout(() => { progress.style.display = 'none'; }, 2000);
+      }
+    }
+  });
+  modelLoaded = true;
+}
+
+async function runWebGPU(msgs, onChunk) {
+  await ensureWebGPULoaded();
+  let result = '';
+  const streamer = new TextStreamer(generator.tokenizer, {
+    skip_prompt: true, skip_special_tokens: true,
+    callback_function: chunk => { result += chunk; onChunk(chunk); }
+  });
+  await generator(msgs, { max_new_tokens: 512, do_sample: false, temperature: 1.0, streamer });
+  return result;
+}
+
+// ── Groq backend ──────────────────────────────────────────────────────────────
+async function runGroq(msgs, onChunk) {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: msgs, stream: true, max_tokens: 512 })
+  });
+  if (!res.ok) throw new Error(`Groq ${res.status}: ${await res.text()}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '', result = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const payload = line.slice(6).trim();
+      if (payload === '[DONE]') continue;
+      try {
+        const chunk = JSON.parse(payload).choices[0]?.delta?.content;
+        if (chunk) { result += chunk; onChunk(chunk); }
+      } catch(_) {}
+    }
+  }
+  return result;
+}
+
+// ── Input handling ────────────────────────────────────────────────────────────
+sendBtn.addEventListener('click', () => sendMessage(input.value));
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input.value); }
+});
+// Auto-resize textarea
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+});
+</script>
+
 </body>
 </html>
