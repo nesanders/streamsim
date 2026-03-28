@@ -97,6 +97,72 @@ M = 1 + (−IncomeGrowth × 0.10) + (Inflation × 0.04)
 | `getScenarios()` | Returns the four scenario config objects (A–D). Scenarios with `pauseEvents` arrays will auto-pause at the specified months. |
 | `styleDot(dot, agent)` | Sets background gradient and dimming on a single agent dot. |
 
+## Game Mode
+
+The sim has two modes toggled by pill buttons in the nav: **Simulation** and **Game**. `setMode(mode)` switches between them, toggling `body.game-mode` CSS class (which hides sim-specific controls via `.sim-only` and `body.game-mode #...` rules).
+
+### Game state
+
+| Variable | Purpose |
+|---|---|
+| `gameState` | Central object: `{active, scenario, phase, credits, creditsThisPeriod, playerServiceId, marketingBoostMonths, playerEntryMonth, pendingEvents[], _bbEarned, _bbPriceRaises, events[]}` |
+| `GAME_SCENARIOS[]` | Array of scenario config objects. Each has `id, name, winTarget, goldTarget, silverTarget, bronzeTarget, startingCredits, foundingBudget, pauseInterval, activeDuration, preRunMonths, preRunSpeed, economy, competitors[]`. No static `events[]` — events are generated fresh each run by `generateGameEvents()`. |
+| `foundingConfig` | `{quality, volume, price, genre}` — player's service config during the founding modal. |
+| `gameState.phase` | `'idle' \| 'prerun' \| 'founding' \| 'playing' \| 'complete'` |
+
+### Founding budget
+
+- `foundingBudget = 8`, `startingCredits = 20` (Disruption scenario)
+- Quality cost: `(val − 3) × 2` pts; Volume cost: `(val − 3) × 1` pt; Price cost: `max(0, 10 − price)` pts (each $1 below $10); Genre: always 1 pt
+- Genre is randomized at founding (never defaults to Kids); player can pick any genre for no additional cost since the 1 pt is always included
+- Unspent points → `× 5` starting credits
+- Helpers: `foundingQualityCost(q)`, `foundingVolumeCost(v)`, `foundingPriceCost(p)`, `foundingBudgetUsed(q, v, p)` (always adds 1 for genre)
+
+### Credit system
+
+Credits earned per step: `subscriberCount × price × 0.015`. Accumulated in `gameState.creditsThisPeriod`, displayed and reset each budget board pause.
+
+### Upgrade costs (budget board)
+
+| Upgrade | Cost |
+|---|---|
+| +1 Quality | 25¢ |
+| +1 Volume | 15¢ |
+| −$1 Price | 10¢ |
+| +$1 Price | free (can be undone with "↩ Undo Raise" during same QSR; `_bbPriceRaises` tracks count) |
+| Marketing Burst (+15% subscribe probability multiplier for 3 months via `subscribeMultiplier` on Service) | 20¢ |
+| Genre Pivot | 30¢ |
+
+### Game flow
+
+1. `startGameScenario(id)` — initializes sim with competitor services, runs pre-run at `preRunSpeed` ms/step.
+2. After `preRunMonths`, founding modal opens → `launchPlayerService()` adds StreamCo as 5th service.
+3. `step()` calls `onGameStep()` each month (earn credits, decrement marketing boost, apply quality decay −0.03/month to all services, fire market events from `gameState.events`).
+4. Every `pauseInterval` months: `showBudgetBoard()` opens — player spends credits, then `closeBudgetBoard()` resumes.
+5. At `activeDuration` months after entry: `endGame()` → `showGameOver()`.
+6. Game over modal has Play Again (restarts scenario) and View Dashboard (closes modal, stays in game-complete phase) options.
+
+### `subscribeMultiplier` field on `Service`
+
+`Service.subscribeMultiplier` (default 1.0) is a direct multiplier on the subscribe probability computed in `Agent.evaluate()`. Used by the marketing boost (set to 1.15 for 3 months). Reset to 1.0 when the boost expires. Does not affect churn. `utilityBonus` remains on Service for compatibility but is unused.
+
+### Game hooks in `step()`
+
+At the end of `step()`, after all normal UI updates, if `gameState.phase === 'playing'`:
+- calls `onGameStep()` (credits + events)
+- checks `activeMonths >= activeDuration` first → `endGame()` (takes priority so no QSR fires at the final month)
+- otherwise checks `activeMonths % pauseInterval === 0` to trigger budget board
+
+### Event generation
+
+`generateGameEvents(scenario)` is called at the start of each game run and stores the result in `gameState.events`. It generates two types of events, all keyed to months relative to player entry:
+
+**Competitor events**: 1–2 per 6-month quarter (11 quarters for Disruption). Each has `{month, targetName, stat, amount, message}`. Types (quality ±1, contentVolume +1, price ±1) drawn from a weighted pool; no two events hit the same competitor in the same quarter.
+
+**Economy events**: 1–2 per game, spaced ≥10 months apart, not landing on budget board months. Each has `{month, type:'economy', walletPressure, cpi, message}`. When fired in `onGameStep()`, directly updates the `walletPressure` and `cpi` DOM sliders (which `step()` reads each tick). Templates: recession, boom, inflation surge, stabilization.
+
+All events fire once (marked `evt.fired = true`) inside `onGameStep()`.
+
 ## Keeping this file current
 
 **This file must be updated whenever the ABM changes.** That includes any modification to model equations, coefficients, probability rules, agent/service properties, key function signatures, or simulation state variables. Treat CLAUDE.md as a living spec, not a snapshot — if the code and this file disagree, fix this file as part of the same change.
@@ -123,7 +189,7 @@ M = 1 + (−IncomeGrowth × 0.10) + (Inflation × 0.04)
 
 - `renderInsightCharts()` is called via `requestAnimationFrame` because the canvas elements are injected into the DOM by `showModal()` just before. Don't call it synchronously.
 - The `pauseLinePlugin` is registered globally with `Chart.register()` before any chart is created. It reads from the module-level `pauseLines[]` array.
-- **Mid-sim service count changes** no longer call `initSim`. When `currentMonth > 0`, changing the kCount dropdown calls `addService()` / `removeService()` instead. Only a fresh sim (month 0) does a full reinit via `initSim({keepParams: true})`.
+- **Mid-sim service count changes** no longer call `initSim`. When `currentMonth > 0`, changing the kCount dropdown calls `addService()` / `removeService()` instead. Only a fresh sim (month 0) does a full reset via `initSim({keepParams: true})`.
 - `updateChart()` now emits `null` for months before a service's `joinedMonth`, creating a visual gap on the chart for late-entering services.
 - **Checkpoint card first-card detection** uses `container.children.length === 0` at render time. The first card always shows "Initial conditions" with no diff, regardless of `lastPauseParams`.
 - `distChart`'s `onClick` handler does the dot highlighting directly — it doesn't go through a shared state update function. If you refactor dot rendering, make sure this still works.

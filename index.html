@@ -26,6 +26,26 @@
         .scenario-card { background-color: #1a1a1a; border: 1px solid #333; border-left: 3px solid #E50914; cursor: pointer; transition: all 0.2s; }
         .scenario-card:hover { background-color: #222; border-color: #E50914; }
         .assumption-badge { display: inline-block; font-size: 9px; background: #2a2000; color: #FFCC00; border: 1px solid #664400; border-radius: 3px; padding: 1px 5px; margin-left: 6px; vertical-align: middle; letter-spacing: 0.05em; }
+
+        /* ── Game mode visibility ── */
+        body.game-mode #introBanner      { display: none !important; }
+        body.game-mode #paramsTab        { display: none !important; }
+        body.game-mode #checkpointsTab   { display: none !important; }
+        body.game-mode #resetBtn         { display: none !important; }
+        body.game-mode #resetParamsBtn   { display: none !important; }
+        body.game-mode #downloadBtn      { display: none !important; }
+        body.game-mode .sim-only         { display: none !important; }
+        body.game-mode #corrCard         { display: none !important; }
+        #gameHUD { display: none; }
+        body.game-mode #gameHUD          { display: block; }
+        #gamePreRunBanner                { display: none; }
+        body.game-mode #gamePreRunBanner { display: block; }
+        #gamePreRunBanner.hidden         { display: none !important; }
+
+        /* ── Budget board / game modals ── */
+        .upgrade-btn:not(:disabled):hover { background: rgba(147,51,234,0.08); }
+        @keyframes game-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(147,51,234,0.5)} 50%{box-shadow:0 0 0 8px rgba(147,51,234,0)} }
+        .game-win-glow { animation: game-pulse 2s infinite; }
     </style>
 </head>
 <body class="bg-black text-white antialiased custom-scrollbar">
@@ -52,6 +72,11 @@
             </div>
         </div>
         <div class="flex items-center space-x-3 sm:space-x-6 text-sm">
+            <!-- Mode toggle -->
+            <div class="flex gap-0.5 bg-gray-900 rounded-lg p-0.5 border border-gray-700 text-xs font-semibold">
+                <button id="btnSimMode" onclick="setMode('sim')" class="px-3 py-1.5 rounded transition bg-netflix-red text-white">Simulation</button>
+                <button id="btnGameMode" onclick="setMode('game')" class="px-3 py-1.5 rounded transition text-gray-400 hover:text-white">Game</button>
+            </div>
             <button id="runBtn" class="bg-netflix-red px-6 py-2 rounded font-bold hover:bg-red-700 transition">Run Simulation</button>
             <button id="resetBtn" class="border border-gray-600 px-4 py-2 rounded font-bold hover:bg-gray-800 transition hidden sm:block" title="Restart with current settings">Restart</button>
             <button id="resetParamsBtn" class="border border-orange-900/50 px-4 py-2 rounded font-bold text-orange-600 hover:bg-orange-950/30 hover:text-orange-300 transition text-xs hidden md:block" title="Reset to random service values">Randomize</button>
@@ -77,6 +102,18 @@
             </div>
             </div>
             <button onclick="toggleBanner()" class="text-green-600 hover:text-white text-xs whitespace-nowrap pt-0.5 transition">Hide ✕</button>
+        </div>
+    </div>
+
+    <!-- Game HUD (shown only in game-mode) -->
+    <div id="gameHUD"></div>
+
+    <!-- Pre-run banner -->
+    <div id="gamePreRunBanner" class="bg-[#0d0a1a] border-b border-purple-900/50 px-6 py-3 text-sm">
+        <div class="flex items-center gap-3 text-purple-300">
+            <svg class="w-4 h-4 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+            <span class="font-semibold">Watching the market establish...</span>
+            <span class="text-gray-500 text-xs">Study the competition before you launch. Which genre is underserved?</span>
         </div>
     </div>
 
@@ -107,7 +144,7 @@
         </div>
 
         <!-- Pause Timeline Configurator -->
-        <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray">
+        <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray sim-only">
             <div class="flex justify-between items-center mb-2">
                 <div class="flex items-center gap-3">
                     <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Pause Points</h3>
@@ -171,6 +208,12 @@
         <div class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray">
             <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Who Subscribes to Each Service?</h3>
             <div id="serviceProfiles" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+        </div>
+
+        <!-- Service Comparison -->
+        <div id="compareCard" class="bg-netflix-dark p-4 rounded-lg border border-netflix-gray">
+            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Service Comparison</h3>
+            <div id="serviceCompare"><p class="text-[10px] text-gray-600 italic">Run the simulation to see comparisons.</p></div>
         </div>
 
         <!-- Correlation Matrix -->
@@ -338,6 +381,134 @@
         </div>
     </div>
 
+    <!-- ── Game: Scenario Select ── -->
+    <div id="gameScenarioModal" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[110] hidden">
+        <div class="bg-[#0a0a0a] border border-purple-900/60 p-8 rounded-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div class="flex justify-between items-start mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-white">Game Mode</h2>
+                    <p class="text-gray-400 text-sm mt-1">Apply what you've learned. Make real decisions. See if you can win.</p>
+                </div>
+                <button onclick="setMode('sim')" class="text-gray-500 hover:text-white text-xl leading-none mt-1">✕</button>
+            </div>
+            <div class="space-y-4" id="scenarioCardList">
+                <!-- populated by renderGameScenarioCards() -->
+            </div>
+            <div class="mt-6 pt-4 border-t border-gray-800 text-xs text-gray-600">
+                Game mode uses the same model as the simulation — the same equations, the same 1,000 agents. Winning requires understanding how price, quality, genre fit, and the economy actually drive subscriber behavior.
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Game: Founding Card (inline top card, not a modal) ── -->
+    <div id="gameFoundingModal" class="hidden bg-[#0a0a0a] border-b border-purple-900/50">
+        <div class="px-10 sm:px-14 py-4">
+            <!-- Header + budget meter -->
+            <div class="flex items-start justify-between mb-2 gap-6">
+                <div class="flex-shrink-0">
+                    <h2 class="text-sm font-bold text-white">Launch StreamCo</h2>
+                    <p class="text-[10px] text-gray-500 mt-0.5">The market has run 12 months — study the chart below, then configure your service.</p>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex justify-between text-[10px] mb-1">
+                        <span class="text-gray-400">Founding Budget</span>
+                        <span><span id="foundingBudgetUsed" class="text-white font-bold">3</span><span class="text-gray-600"> / </span><span id="foundingBudgetTotal" class="text-gray-400">8</span> pts &nbsp;<span id="foundingBudgetRemaining" class="text-yellow-400 font-bold">5 remaining → +25 starting credits</span></span>
+                    </div>
+                    <div class="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                        <div id="foundingBudgetBar" class="h-1.5 rounded-full bg-purple-600 transition-all" style="width:38%"></div>
+                    </div>
+                    <p class="text-[9px] text-gray-700 mt-0.5">Q costs 2 pts/level · V costs 1 pt/level · price below $10 costs 1 pt/$1 · genre costs 1 pt (click selected genre to deselect) · unspent pts → 5 credits each</p>
+                </div>
+            </div>
+            <!-- Controls row -->
+            <div class="flex items-stretch gap-3">
+                <!-- Quality -->
+                <div class="bg-black/40 rounded-lg px-3 py-2 flex-1">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[10px] text-gray-400 uppercase tracking-wide">Quality</span>
+                        <span class="text-[9px] text-gray-600"><span id="foundingQualityCost">2</span> pts</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button id="foundingQDown" onclick="foundingAdjust('quality',-1)" class="w-6 h-6 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-base leading-none flex items-center justify-center transition">−</button>
+                        <span id="foundingQualityVal" class="text-xl font-bold text-white w-7 text-center">4</span>
+                        <button id="foundingQUp"   onclick="foundingAdjust('quality',+1)" class="w-6 h-6 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-base leading-none flex items-center justify-center transition">+</button>
+                    </div>
+                    <p class="text-[9px] text-gray-700 mt-1">↓ churn rate</p>
+                </div>
+                <!-- Volume -->
+                <div class="bg-black/40 rounded-lg px-3 py-2 flex-1">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[10px] text-gray-400 uppercase tracking-wide">Volume</span>
+                        <span class="text-[9px] text-gray-600"><span id="foundingVolumeCost">1</span> pts</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button id="foundingVDown" onclick="foundingAdjust('volume',-1)" class="w-6 h-6 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-base leading-none flex items-center justify-center transition">−</button>
+                        <span id="foundingVolumeVal" class="text-xl font-bold text-white w-7 text-center">4</span>
+                        <button id="foundingVUp"   onclick="foundingAdjust('volume',+1)" class="w-6 h-6 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-base leading-none flex items-center justify-center transition">+</button>
+                    </div>
+                    <p class="text-[9px] text-gray-700 mt-1">↑ signup rate</p>
+                </div>
+                <!-- Price -->
+                <div class="bg-black/40 rounded-lg px-3 py-2 flex-1">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[10px] text-gray-400 uppercase tracking-wide">Price</span>
+                        <span class="text-[9px] text-gray-400"><span id="foundingPriceCost">0</span> pts</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button id="foundingPDown" onclick="foundingAdjust('price',-1)" class="w-6 h-6 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-base leading-none flex items-center justify-center transition">−</button>
+                        <span id="foundingPriceVal" class="text-xl font-bold text-white w-10 text-center">$10</span>
+                        <button id="foundingPUp"   onclick="foundingAdjust('price',+1)" class="w-6 h-6 rounded border border-gray-700 text-gray-300 hover:border-gray-400 text-base leading-none flex items-center justify-center transition">+</button>
+                    </div>
+                    <p class="text-[9px] text-gray-700 mt-1">revenue/sub</p>
+                </div>
+                <!-- Genre -->
+                <div class="bg-black/40 rounded-lg px-3 py-2 flex-[2]">
+                    <div class="text-[10px] text-gray-400 uppercase tracking-wide mb-1.5">Genre <span id="foundingGenreCostLabel" class="text-gray-600 font-normal normal-case">(1 pt)</span></div>
+                    <div class="flex flex-wrap gap-1.5">
+                        <button data-genre="Action"  onclick="foundingSetGenre('Action')"  class="founding-genre-btn text-[10px] px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-300 transition">Action</button>
+                        <button data-genre="Drama"   onclick="foundingSetGenre('Drama')"   class="founding-genre-btn text-[10px] px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-300 transition">Drama</button>
+                        <button data-genre="Comedy"  onclick="foundingSetGenre('Comedy')"  class="founding-genre-btn text-[10px] px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-300 transition">Comedy</button>
+                        <button data-genre="Kids"    onclick="foundingSetGenre('Kids')"    class="founding-genre-btn text-[10px] px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-300 transition">Kids</button>
+                        <button data-genre="Sci-Fi"  onclick="foundingSetGenre('Sci-Fi')"  class="founding-genre-btn text-[10px] px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-300 transition">Sci-Fi</button>
+                    </div>
+                    <p class="text-[9px] text-gray-700 mt-1">Selected: <span id="foundingGenreVal" class="text-purple-300 font-bold">Kids</span> (+30% utility for matched viewers)</p>
+                </div>
+                <!-- Score Preview + Launch -->
+                <div class="bg-black/40 rounded-lg px-3 py-2 flex-1 flex flex-col justify-between min-w-[110px]">
+                    <div>
+                        <div class="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Score Preview</div>
+                        <div class="text-lg font-bold text-white"><span id="foundingUtilityPreview">4.2</span></div>
+                        <div class="text-[9px] text-gray-500">subscribe chance: <span id="foundingSubPctPreview" class="text-yellow-400 font-bold">10%</span>/mo</div>
+                    </div>
+                    <button id="foundingLaunchBtn" onclick="launchPlayerService()" class="mt-2 w-full bg-purple-700 hover:bg-purple-600 transition text-white font-bold py-1.5 rounded text-xs">
+                        Launch StreamCo →
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Game: Budget Board (inline top card, not a modal) ── -->
+    <div id="budgetBoardModal" class="hidden bg-[#0a0a0a] border-b border-purple-900/50">
+        <div class="px-10 sm:px-14 py-3 flex items-center justify-between border-b border-gray-900">
+            <h2 class="text-sm font-bold text-white">Quarterly Strategy Review</h2>
+            <span id="bbQuarterLabel" class="text-xs text-gray-500 border border-gray-700 rounded px-2 py-0.5"></span>
+        </div>
+        <div id="bbContent" class="px-10 sm:px-14 py-4"></div>
+        <div class="px-10 sm:px-14 pb-4">
+            <button onclick="closeBudgetBoard()" class="w-full bg-purple-700 hover:bg-purple-600 transition text-white font-bold py-2.5 rounded-lg text-sm">
+                Next Quarter →
+            </button>
+        </div>
+    </div>
+
+    <!-- ── Game: Game Over ── -->
+    <div id="gameOverModal" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[110] hidden">
+        <div class="bg-[#0a0a0a] border border-purple-900/60 p-6 rounded-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div id="gameOverContent"></div>
+        </div>
+    </div>
+
     <!-- Agent Detail Modal -->
     <div id="agentModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] hidden">
         <div class="bg-netflix-dark border border-netflix-gray p-8 rounded-xl max-w-md w-full relative max-h-[85vh] overflow-y-auto custom-scrollbar">
@@ -446,7 +617,7 @@ class Agent {
                 churnProb = 0.01 + Math.max(0, spendingPressure - 1) * 0.06;
             } else if (s.quality >= 4) {
                 const fit = s.genreFocus === this.preference ? 1.3 : 1.0;
-                const u = (s.quality * 0.6 + s.contentVolume * 0.4) * fit - (s.price * this.priceSensitivity * spendingPressure);
+                const u = (s.quality * 0.6 + s.contentVolume * 0.4) * fit - (s.price * this.priceSensitivity * spendingPressure) + (s.utilityBonus || 0);
                 churnProb = u < 2 ? 0.15 : (u < 4 ? 0.05 : 0.02);
             } else {
                 churnProb = 0.35;
@@ -466,14 +637,14 @@ class Agent {
         services.forEach(s => {
             if (this.subscriptions.includes(s.id)) return;
             const fit = s.contentVolume > 0 && s.genreFocus === this.preference ? 1.3 : 1.0;
-            const u = (s.quality * 0.6 + s.contentVolume * 0.4) * fit - (s.price * this.priceSensitivity * spendingPressure);
+            const u = (s.quality * 0.6 + s.contentVolume * 0.4) * fit - (s.price * this.priceSensitivity * spendingPressure) + (s.utilityBonus || 0);
             if (u > maxU) { maxU = u; bestSvc = s; }
         });
         if (this.subscriptions.length < 3 && bestSvc) {
             const baseDecay = this.subscriptions.length === 0 ? 1.0 : this.subscriptions.length === 1 ? 0.65 : 0.40;
             const decayMult = Math.max(0.1, 2 - spendingPressure); // boom loosens stacking penalty
             const decay = Math.min(1.0, baseDecay * decayMult);
-            const prob = (maxU > 5 ? 0.4 : maxU > 3 ? 0.1 : 0.02) * decay;
+            const prob = (maxU > 5 ? 0.4 : maxU > 3 ? 0.1 : 0.02) * decay * (bestSvc.subscribeMultiplier || 1);
             if (Math.random() < prob) {
                 this.subscriptions.push(bestSvc.id);
                 this.monthsSubscribed[bestSvc.id] = 0;
@@ -515,6 +686,8 @@ class Service {
     constructor(id, name, color) {
         this.id = id; this.name = name; this.color = color;
         this.joinedMonth = 0; // month the service entered the market (0 = from the start)
+        this.utilityBonus = 0;    // unused — kept for compatibility
+        this.subscribeMultiplier = 1.0; // transient multiplier on subscribe probability (game marketing boost)
         this.price = 10 + Math.random() * 10;
         this.quality = 5 + Math.random() * 5;
         this.contentVolume = 5 + Math.random() * 5;
@@ -1070,6 +1243,50 @@ function renderServiceProfiles() {
                 </div>
             </div>`;
     });
+    renderServiceCompare();
+}
+
+// ── Service Comparison Card ────────────────────────────────────────────────
+function renderServiceCompare() {
+    const el = document.getElementById('serviceCompare');
+    if (!el || !services.length) return;
+
+    const subsMap = {};
+    services.forEach(s => { subsMap[s.id] = agents.filter(a => a.subscriptions.includes(s.id)).length; });
+
+    const metrics = [
+        { label: 'Subscribers', vals: services.map(s => subsMap[s.id]),        fmt: v => v,              max: Math.max(...services.map(s => subsMap[s.id]), 1) },
+        { label: 'Quality',     vals: services.map(s => s.quality),             fmt: v => v.toFixed(1),   max: 10 },
+        { label: 'Volume',      vals: services.map(s => s.contentVolume),       fmt: v => v.toFixed(1),   max: 10 },
+        { label: 'Price',       vals: services.map(s => s.price),               fmt: v => '$' + v.toFixed(0), max: 20 },
+    ];
+
+    el.innerHTML = metrics.map(m => `
+        <div class="mb-3">
+            <div class="text-[9px] text-gray-600 uppercase tracking-wide mb-1">${m.label}</div>
+            <div class="space-y-0.5">
+                ${services.map((s, i) => `
+                <div class="flex items-center gap-2">
+                    <div class="w-1.5 h-1.5 rounded-full flex-shrink-0" style="background:${s.color}"></div>
+                    <span class="text-[9px] text-gray-600 w-16 truncate">${s.name}</span>
+                    <div class="flex-1 bg-gray-900 h-1.5 rounded overflow-hidden">
+                        <div class="h-1.5 rounded transition-all" style="width:${(m.vals[i] / m.max * 100).toFixed(0)}%;background:${s.color}99"></div>
+                    </div>
+                    <span class="text-[10px] text-gray-400 w-8 text-right tabular-nums">${m.fmt(m.vals[i])}</span>
+                </div>`).join('')}
+            </div>
+        </div>`).join('') + `
+        <div>
+            <div class="text-[9px] text-gray-600 uppercase tracking-wide mb-1">Genre Focus</div>
+            <div class="flex flex-wrap gap-x-4 gap-y-0.5">
+                ${services.map(s => `
+                <div class="flex items-center gap-1.5">
+                    <div class="w-1.5 h-1.5 rounded-full flex-shrink-0" style="background:${s.color}"></div>
+                    <span class="text-[10px] text-gray-400">${s.name}</span>
+                    <span class="text-[10px] font-medium" style="color:${s.color}99">${s.genreFocus ?? '—'}</span>
+                </div>`).join('')}
+            </div>
+        </div>`;
 }
 
 // ── Correlation Matrix ─────────────────────────────────────────────────────
@@ -1190,6 +1407,23 @@ function step() {
     if (currentMonth % 3 === 0) renderServiceProfiles();
     if (currentMonth % 3 === 0 && dotSortKey === 'subs') renderGrid();
     renderCorrMatrix();
+
+    // ── Game hooks ──────────────────────────────────────────────────────────
+    if (gameState.active && gameState.phase === 'playing') {
+        onGameStep();
+        const activeMonths = currentMonth - gameState.playerEntryMonth;
+        if (activeMonths >= gameState.scenario.activeDuration) {
+            endGame();
+        } else if (activeMonths > 0 && activeMonths % gameState.scenario.pauseInterval === 0) {
+            clearInterval(simInterval);
+            isRunning = false;
+            document.getElementById('runBtn').innerText = 'Resume';
+            const quarter = Math.floor(activeMonths / gameState.scenario.pauseInterval);
+            const ql = document.getElementById('bbQuarterLabel');
+            if (ql) ql.textContent = (['Q1','Q2','Q3','Q4','Q5','Q6','Q7','Q8'][quarter-1] || `Q${quarter}`) + ' · Month ' + currentMonth;
+            showBudgetBoard();
+        }
+    }
 }
 
 function updateUI() {
@@ -2166,9 +2400,9 @@ document.getElementById('runBtn').onclick = () => {
     if (isRunning) {
         isRunning = false;
         clearInterval(simInterval);
-        document.getElementById('runBtn').innerText = 'Resume Simulation';
-        // Treat manual pause as a checkpoint
-        if (currentMonth > 0 && !pauseLines.includes(currentMonth)) {
+        document.getElementById('runBtn').innerText = gameState.active ? 'Resume' : 'Resume Simulation';
+        // Treat manual pause as a checkpoint (sim mode only)
+        if (!gameState.active && currentMonth > 0 && !pauseLines.includes(currentMonth)) {
             pauseLines.push(currentMonth);
             if (chart) chart.update('none');
             renderPauseTimeline();
@@ -2184,10 +2418,11 @@ document.getElementById('runBtn').onclick = () => {
             });
         }
     } else {
+        if (gameState.active && gameState.phase !== 'playing') return; // block run before founding
         isRunning = true;
         document.getElementById('runBtn').innerText = 'Pause';
         simInterval = setInterval(step, 200);
-        closeDrawer();
+        if (!gameState.active) closeDrawer();
     }
 };
 
@@ -2311,6 +2546,795 @@ function toggleBanner() {
     const link = document.getElementById('showBannerLink');
     const hidden = banner.classList.toggle('hidden');
     link.classList.toggle('hidden', !hidden);
+}
+
+// ── Game Mode ──────────────────────────────────────────────────────────────
+
+const gameState = {
+    active: false,
+    scenario: null,
+    phase: 'idle',        // 'idle'|'prerun'|'founding'|'playing'|'complete'
+    credits: 40,
+    creditsThisPeriod: 0,
+    playerServiceId: null,
+    marketingBoostMonths: 0,
+    playerEntryMonth: 0,
+    pendingEvents: [],
+    events: [],
+};
+
+const GAME_SCENARIOS = [
+    {
+        id: 'disruption',
+        name: 'The Disruption',
+        subtitle: 'Break into a saturated market and reach 175 subscribers in 66 months.',
+        tag: 'Market Entry',
+        locked: false,
+        intro: 'Four streaming giants have dominated the market for over a year. You\'re launching StreamCo — a scrappy new entrant. Study the competition, find your niche, and grow to 200 subscribers in 30 months.',
+        winTarget: 175,
+        goldTarget: 275,
+        silverTarget: 225,
+        bronzeTarget: 175,
+        startingCredits: 30,
+        foundingBudget: 8,
+        pauseInterval: 6,
+        activeDuration: 66,
+        preRunMonths: 12,
+        preRunSpeed: 120,
+        economy: { walletPressure: 0.5, cpi: 2.5 },
+        competitors: [
+            { name: 'NetStream',  quality: 7, contentVolume: 7, price: 11, genreFocus: 'Drama',  color: '#E50914' },
+            { name: 'CineMax',    quality: 6, contentVolume: 8, price: 9,  genreFocus: 'Action', color: '#0095FF' },
+            { name: 'GlowTV',     quality: 5, contentVolume: 9, price: 7,  genreFocus: 'Comedy', color: '#22C55E' },
+            { name: 'EdgeVideo',  quality: 8, contentVolume: 5, price: 13, genreFocus: 'Sci-Fi', color: '#FFCC00' },
+        ],
+        events: [
+            { month: 12, targetName: 'GlowTV',    stat: 'quality', amount:  1, message: 'GlowTV invests in originals — quality jumps to 6!' },
+            { month: 18, targetName: 'NetStream',  stat: 'price',   amount: -1, message: 'NetStream cuts price by $1 to defend market share.' },
+        ],
+    },
+    {
+        id: 'comeback',    name: 'The Comeback',    subtitle: 'Coming soon', tag: 'Turnaround', locked: true,
+        intro: '', winTarget: 0, goldTarget: 0, silverTarget: 0, bronzeTarget: 0,
+        startingCredits: 0, foundingBudget: 0, pauseInterval: 6, activeDuration: 0, preRunMonths: 0, preRunSpeed: 200,
+        economy: {}, competitors: [], events: [],
+    },
+    {
+        id: 'recession',   name: 'Survive the Recession', subtitle: 'Coming soon', tag: 'Crisis', locked: true,
+        intro: '', winTarget: 0, goldTarget: 0, silverTarget: 0, bronzeTarget: 0,
+        startingCredits: 0, foundingBudget: 0, pauseInterval: 6, activeDuration: 0, preRunMonths: 0, preRunSpeed: 200,
+        economy: {}, competitors: [], events: [],
+    },
+];
+
+function foundingQualityCost(q) { return Math.max(0, q - 3) * 2; }
+function foundingVolumeCost(v)  { return Math.max(0, v - 3) * 1; }
+function foundingPriceCost(p)   { return Math.max(0, 10 - p); }
+function foundingBudgetUsed(q, v, p) { return foundingQualityCost(q) + foundingVolumeCost(v) + foundingPriceCost(p) + (foundingConfig.genre !== null ? 1 : 0); }
+
+// ── Mode toggle ────────────────────────────────────────────────────────────
+function setMode(mode) {
+    if (mode === 'game') {
+        document.body.classList.add('game-mode');
+        document.getElementById('btnSimMode').classList.remove('bg-netflix-red', 'text-white');
+        document.getElementById('btnSimMode').classList.add('text-gray-400');
+        document.getElementById('btnGameMode').classList.remove('text-gray-400');
+        document.getElementById('btnGameMode').classList.add('bg-netflix-red', 'text-white');
+        renderGameScenarioCards();
+        document.getElementById('gameScenarioModal').classList.remove('hidden');
+    } else {
+        document.body.classList.remove('game-mode');
+        document.getElementById('btnSimMode').classList.add('bg-netflix-red', 'text-white');
+        document.getElementById('btnSimMode').classList.remove('text-gray-400');
+        document.getElementById('btnGameMode').classList.add('text-gray-400');
+        document.getElementById('btnGameMode').classList.remove('bg-netflix-red', 'text-white');
+        ['gameScenarioModal','gameFoundingModal','budgetBoardModal','gameOverModal'].forEach(id => {
+            document.getElementById(id)?.classList.add('hidden');
+        });
+        if (gameState.active) exitGame();
+    }
+}
+
+function exitGame() {
+    if (simInterval) { clearInterval(simInterval); simInterval = null; }
+    isRunning = false;
+    gameState.active = false;
+    gameState.phase = 'idle';
+    gameState.playerServiceId = null;
+    gameState.marketingBoostMonths = 0;
+    document.getElementById('runBtn').innerText = 'Run Simulation';
+    document.getElementById('gamePreRunBanner')?.classList.add('hidden');
+    initSim();
+}
+
+// ── Scenario select ────────────────────────────────────────────────────────
+function renderGameScenarioCards() {
+    const list = document.getElementById('scenarioCardList');
+    if (!list) return;
+    list.innerHTML = GAME_SCENARIOS.map(sc => sc.locked ? `
+        <div class="bg-[#111] border border-gray-800 rounded-lg p-5 opacity-50">
+            <div class="flex justify-between items-start mb-1">
+                <h3 class="font-bold text-base text-gray-400">${sc.name}</h3>
+                <span class="text-[10px] text-gray-600 border border-gray-800 rounded px-2 py-0.5">${sc.tag} · Locked</span>
+            </div>
+            <p class="text-sm text-gray-600">${sc.subtitle}</p>
+        </div>` : `
+        <div class="bg-[#111] border border-purple-900/40 rounded-lg p-5 cursor-pointer hover:border-purple-600 hover:bg-purple-900/10 transition" onclick="startGameScenario('${sc.id}')">
+            <div class="flex justify-between items-start mb-2">
+                <h3 class="font-bold text-base text-white">${sc.name}</h3>
+                <span class="text-[10px] text-gray-400 border border-gray-700 rounded px-2 py-0.5">${sc.tag}</span>
+            </div>
+            <p class="text-sm text-gray-400 mb-3">${sc.subtitle}</p>
+            <div class="flex flex-wrap gap-3 text-[11px] text-gray-500 mb-3">
+                <span>⏱ ~3 minutes</span>
+                <span>🎯 Goal: ${sc.winTarget} subscribers</span>
+                <span>⏸ Pauses every ${sc.pauseInterval} months</span>
+                <span>💰 ${sc.startingCredits} starting credits</span>
+            </div>
+            <div class="mt-2"><button class="text-xs bg-purple-700 hover:bg-purple-600 px-4 py-1.5 rounded font-bold transition">Play →</button></div>
+        </div>`
+    ).join('');
+}
+
+// ── Randomized event generation ────────────────────────────────────────────
+function generateGameEvents(scenario) {
+    const templates = [
+        { stat: 'quality',       amount: +1, weight: 3, msg: n => `${n} invests in original content — quality rises.` },
+        { stat: 'contentVolume', amount: +1, weight: 2, msg: n => `${n} expands its library with new titles.` },
+        { stat: 'price',         amount: -1, weight: 3, msg: n => `${n} cuts its price to grab more subscribers.` },
+        { stat: 'price',         amount: +1, weight: 1, msg: n => `${n} raises prices — its subscribers are paying more.` },
+        { stat: 'quality',       amount: -1, weight: 1, msg: n => `${n} slashes its content budget — quality drops.` },
+    ];
+    // Build a weighted pool for random selection
+    const pool = [];
+    templates.forEach(t => { for (let i = 0; i < t.weight; i++) pool.push(t); });
+
+    const events = [];
+    const numQuarters = Math.ceil(scenario.activeDuration / scenario.pauseInterval);
+
+    for (let q = 0; q < numQuarters; q++) {
+        const quarterStart = q * scenario.pauseInterval + 1;
+        const quarterEnd   = (q + 1) * scenario.pauseInterval - 1; // leave last month clear before budget board
+        const count = 1 + Math.floor(Math.random() * 2); // 1–2 events per quarter
+
+        // Avoid hitting the same competitor twice in the same quarter
+        const usedNames = new Set();
+        const competitors = [...scenario.competitors];
+
+        for (let e = 0; e < count; e++) {
+            const available = competitors.filter(c => !usedNames.has(c.name));
+            if (!available.length) break;
+            const comp = available[Math.floor(Math.random() * available.length)];
+            usedNames.add(comp.name);
+
+            const tmpl = pool[Math.floor(Math.random() * pool.length)];
+            // Spread events through the quarter (not all on the same month)
+            const month = quarterStart + Math.floor(Math.random() * Math.max(1, quarterEnd - quarterStart));
+            events.push({ month, targetName: comp.name, stat: tmpl.stat, amount: tmpl.amount, message: tmpl.msg(comp.name) });
+        }
+    }
+    // Economy events: 1–2 per game, spaced at least 10 months apart, not landing on budget board months
+    const econTemplates = [
+        { wp: -3.0, cpi: 6.5, msg: 'Recession hits — household incomes fall and prices rise. Viewers are cutting back on subscriptions.' },
+        { wp:  3.0, cpi: 1.0, msg: 'Economic boom — incomes are rising and inflation is low. Viewers are more willing to subscribe.' },
+        { wp: -1.0, cpi: 5.5, msg: 'Inflation surge — rising prices are squeezing household budgets.' },
+        { wp:  2.0, cpi: 2.0, msg: 'Economy stabilizes — moderate growth and low inflation favor streaming.' },
+    ];
+    const numEconEvents = 1 + Math.floor(Math.random() * 2); // 1–2
+    const usedEconMonths = [];
+    for (let i = 0; i < numEconEvents; i++) {
+        let month, tries = 0;
+        do {
+            month = 4 + Math.floor(Math.random() * (scenario.activeDuration - 8));
+            tries++;
+        } while (tries < 30 && (
+            month % scenario.pauseInterval === 0 || // avoid budget board months
+            usedEconMonths.some(m => Math.abs(m - month) < 10)
+        ));
+        usedEconMonths.push(month);
+        const tmpl = econTemplates[Math.floor(Math.random() * econTemplates.length)];
+        events.push({ month, type: 'economy', walletPressure: tmpl.wp, cpi: tmpl.cpi, message: tmpl.msg });
+    }
+
+    return events;
+}
+
+// ── Start game scenario ────────────────────────────────────────────────────
+function startGameScenario(scenarioId) {
+    const scenario = GAME_SCENARIOS.find(s => s.id === scenarioId);
+    if (!scenario || scenario.locked) return;
+    document.getElementById('gameScenarioModal').classList.add('hidden');
+
+    gameState.scenario = scenario;
+    gameState.phase = 'prerun';
+    gameState.active = true;
+    gameState.credits = scenario.startingCredits;
+    gameState.creditsThisPeriod = 0;
+    gameState.marketingBoostMonths = 0;
+    gameState.pendingEvents = [];
+    // Generate fresh randomized events for this run
+    gameState.events = generateGameEvents(scenario);
+
+    // Configure economy
+    document.getElementById('walletPressure').value = scenario.economy.walletPressure ?? 0;
+    document.getElementById('cpi').value = scenario.economy.cpi ?? 2;
+    syncSliderLabels();
+
+    // Set MONTHS to cover pre-run + active + buffer
+    MONTHS = scenario.preRunMonths + scenario.activeDuration + 2;
+    document.getElementById('durationSlider').value = Math.ceil(MONTHS / 12);
+
+    // Build competitor services
+    agents = Array.from({ length: AGENT_COUNT }, (_, i) => new Agent(i));
+    services = scenario.competitors.map((cfg, i) => {
+        const s = new Service(i, cfg.name, cfg.color);
+        s.quality = cfg.quality;
+        s.contentVolume = cfg.contentVolume;
+        s.price = cfg.price;
+        s.genreFocus = cfg.genreFocus;
+        s.joinedMonth = 0;
+        s.utilityBonus = 0;
+        return s;
+    });
+    document.getElementById('kCount').value = services.length;
+
+    currentMonth = 0;
+    history = [];
+    pauseLines = [];
+    userPauses = [];
+    scheduledPauses = [];
+    isRunning = false;
+    highlightSubCount = -1;
+    if (simInterval) { clearInterval(simInterval); simInterval = null; }
+
+    renderGenreSliders();
+    renderServices();
+    initChart();
+    initDistChart();
+    renderGrid();
+    updateStats();
+    updateUI();
+    renderServiceProfiles();
+    renderCorrMatrix();
+    renderPauseTimeline();
+    lastPauseParams = snapshotParams();
+    lastAgentSnapshot = agents.map(a => [...a.subscriptions]);
+    lastServicesMeta = services.map(s => ({ id: s.id, name: s.name, color: s.color }));
+
+    renderGameHUD();
+    document.getElementById('gamePreRunBanner').classList.remove('hidden');
+
+    // Run pre-run at faster speed
+    isRunning = true;
+    document.getElementById('runBtn').innerText = 'Pause';
+    simInterval = setInterval(() => {
+        step();
+        if (currentMonth >= scenario.preRunMonths && gameState.phase === 'prerun') {
+            clearInterval(simInterval);
+            simInterval = null;
+            isRunning = false;
+            gameState.phase = 'founding';
+            document.getElementById('gamePreRunBanner').classList.add('hidden');
+            document.getElementById('runBtn').innerText = 'Run Simulation';
+            showFoundingModal();
+        }
+    }, scenario.preRunSpeed);
+}
+
+// ── Founding modal ─────────────────────────────────────────────────────────
+let foundingConfig = { quality: 4, volume: 4, price: 10, genre: 'Kids' };
+
+function showFoundingModal() {
+    const genres = ['Action', 'Drama', 'Comedy', 'Sci-Fi'];
+    const randomGenre = genres[Math.floor(Math.random() * genres.length)];
+    foundingConfig = { quality: 4, volume: 4, price: 10, genre: randomGenre };
+    // Reset genre button highlights
+    document.querySelectorAll('.founding-genre-btn').forEach(btn => {
+        const g = btn.dataset.genre;
+        btn.classList.toggle('border-purple-500', g === randomGenre);
+        btn.classList.toggle('text-purple-300',   g === randomGenre);
+        btn.classList.toggle('border-gray-700',   g !== randomGenre);
+        btn.classList.toggle('text-gray-400',     g !== randomGenre);
+    });
+    renderFoundingUI();
+    const el = document.getElementById('gameFoundingModal');
+    document.querySelector('main').insertAdjacentElement('afterbegin', el);
+    el.classList.remove('hidden');
+}
+
+function renderFoundingUI() {
+    const sc = gameState.scenario;
+    const { quality, volume, price, genre } = foundingConfig;
+    const used = foundingBudgetUsed(quality, volume, price);
+    const remaining = sc.foundingBudget - used;
+    const bonusCredits = remaining * 5;
+
+    document.getElementById('foundingBudgetBar').style.width = `${Math.round(used / sc.foundingBudget * 100)}%`;
+    document.getElementById('foundingBudgetUsed').textContent = used;
+    document.getElementById('foundingBudgetTotal').textContent = sc.foundingBudget;
+    document.getElementById('foundingBudgetRemaining').textContent =
+        remaining > 0 ? `${remaining} remaining → +${bonusCredits} starting credits` : '0 remaining';
+
+    document.getElementById('foundingQualityVal').textContent = quality;
+    document.getElementById('foundingVolumeVal').textContent  = volume;
+    document.getElementById('foundingPriceVal').textContent   = `$${price}`;
+    document.getElementById('foundingGenreVal').textContent   = genre ?? 'None (no genre focus)';
+    document.getElementById('foundingQualityCost').textContent = foundingQualityCost(quality);
+    document.getElementById('foundingVolumeCost').textContent  = foundingVolumeCost(volume);
+    document.getElementById('foundingPriceCost').textContent   = foundingPriceCost(price);
+    const gcl = document.getElementById('foundingGenreCostLabel');
+    if (gcl) { gcl.textContent = genre !== null ? '(1 pt — click to deselect)' : '(0 pts)'; gcl.className = genre !== null ? 'text-gray-600 font-normal normal-case' : 'text-green-700 font-normal normal-case'; }
+
+    const canIncQ = quality < 9 && (foundingBudgetUsed(quality + 1, volume, price) <= sc.foundingBudget);
+    document.getElementById('foundingQUp').disabled   = !canIncQ;
+    document.getElementById('foundingQDown').disabled = quality <= 3;
+    const canIncV = volume < 9 && (foundingBudgetUsed(quality, volume + 1, price) <= sc.foundingBudget);
+    document.getElementById('foundingVUp').disabled   = !canIncV;
+    document.getElementById('foundingVDown').disabled = volume <= 3;
+    document.getElementById('foundingPUp').disabled   = price >= 15;
+    document.getElementById('foundingPDown').disabled = price <= 5 || foundingBudgetUsed(quality, volume, price - 1) > sc.foundingBudget;
+
+    const sp = 1 + (-(parseFloat(document.getElementById('walletPressure').value)) * 0.1)
+                 + (parseFloat(document.getElementById('cpi').value) * 0.04);
+    const fit = 1.3;
+    const u = (quality * 0.6 + volume * 0.4) * fit - (price * 0.45 * sp);
+    document.getElementById('foundingUtilityPreview').textContent = u.toFixed(1);
+    document.getElementById('foundingSubPctPreview').textContent  = (u > 5 ? 40 : u > 3 ? 10 : 2) + '%';
+}
+
+function foundingAdjust(prop, delta) {
+    const sc = gameState.scenario;
+    if (prop === 'quality') {
+        const next = foundingConfig.quality + delta;
+        if (next < 3 || next > 9) return;
+        if (foundingBudgetUsed(next, foundingConfig.volume, foundingConfig.price) > sc.foundingBudget) return;
+        foundingConfig.quality = next;
+    } else if (prop === 'volume') {
+        const next = foundingConfig.volume + delta;
+        if (next < 3 || next > 9) return;
+        if (foundingBudgetUsed(foundingConfig.quality, next, foundingConfig.price) > sc.foundingBudget) return;
+        foundingConfig.volume = next;
+    } else if (prop === 'price') {
+        const next = foundingConfig.price + delta;
+        if (next < 5 || next > 15) return;
+        if (foundingBudgetUsed(foundingConfig.quality, foundingConfig.volume, next) > sc.foundingBudget) return;
+        foundingConfig.price = next;
+    }
+    renderFoundingUI();
+}
+
+function foundingSetGenre(g) {
+    foundingConfig.genre = (foundingConfig.genre === g) ? null : g; // click active genre to deselect
+    const sel = foundingConfig.genre;
+    document.querySelectorAll('.founding-genre-btn').forEach(btn => {
+        btn.classList.toggle('border-purple-500', btn.dataset.genre === sel);
+        btn.classList.toggle('text-purple-300',   btn.dataset.genre === sel);
+        btn.classList.toggle('border-gray-700',   btn.dataset.genre !== sel);
+        btn.classList.toggle('text-gray-400',     btn.dataset.genre !== sel);
+    });
+    renderFoundingUI();
+}
+
+function launchPlayerService() {
+    document.getElementById('gameFoundingModal').classList.add('hidden');
+
+    const sc = gameState.scenario;
+    const used = foundingBudgetUsed(foundingConfig.quality, foundingConfig.volume, foundingConfig.price);
+    const bonusCredits = (sc.foundingBudget - used) * 5;
+    gameState.credits = sc.startingCredits + bonusCredits;
+
+    const playerId = services.length; // index 4
+    const playerSvc = new Service(playerId, 'StreamCo', '#9333EA');
+    playerSvc.quality        = foundingConfig.quality;
+    playerSvc.contentVolume  = foundingConfig.volume;
+    playerSvc.price          = foundingConfig.price;
+    playerSvc.genreFocus     = foundingConfig.genre;
+    playerSvc.joinedMonth    = currentMonth + 1;
+    playerSvc.subscribeMultiplier = 1.0;
+    services.push(playerSvc);
+
+    if (chart) {
+        const pastNulls = Array(currentMonth + 2).fill(null);
+        chart.data.datasets.push({
+            label: 'StreamCo', serviceId: playerId,
+            data: pastNulls,
+            borderColor: '#9333EA', backgroundColor: '#9333EA18',
+            fill: true, tension: 0.4, pointRadius: 0
+        });
+        chart.update('none');
+    }
+    document.getElementById('kCount').value = services.length;
+    renderServices();
+    renderServiceProfiles();
+    renderPauseTimeline();
+
+    gameState.playerServiceId  = playerId;
+    gameState.playerEntryMonth = currentMonth;
+    gameState.phase            = 'playing';
+    gameState.creditsThisPeriod = 0;
+
+    renderGameHUD();
+
+    isRunning = true;
+    document.getElementById('runBtn').innerText = 'Pause';
+    simInterval = setInterval(step, 200);
+}
+
+// ── Per-step game logic ────────────────────────────────────────────────────
+function onGameStep() {
+    const playerSvc = services.find(s => s.id === gameState.playerServiceId);
+    if (!playerSvc) return;
+
+    const subs = agents.filter(a => a.subscriptions.includes(gameState.playerServiceId)).length;
+    const earned = subs * playerSvc.price * 0.015;
+    gameState.credits += earned;
+    gameState.creditsThisPeriod += earned;
+
+    if (gameState.marketingBoostMonths > 0) {
+        gameState.marketingBoostMonths--;
+        if (gameState.marketingBoostMonths === 0) playerSvc.subscribeMultiplier = 1.0;
+    }
+
+    // Quality decay: all services lose 0.03/month (floor 1.0). Requires ongoing investment.
+    services.forEach(s => { s.quality = Math.max(1.0, s.quality - 0.03); });
+
+    // Fire randomized market and economy events (keyed to months after player entry)
+    const relMonth = currentMonth - gameState.playerEntryMonth;
+    gameState.events.forEach(evt => {
+        if (evt.fired || evt.month !== relMonth) return;
+        evt.fired = true;
+
+        if (evt.type === 'economy') {
+            const wpSlider  = document.getElementById('walletPressure');
+            const cpiSlider = document.getElementById('cpi');
+            if (wpSlider)  wpSlider.value  = evt.walletPressure;
+            if (cpiSlider) cpiSlider.value = evt.cpi;
+            syncSliderLabels();
+        } else {
+            const target = services.find(s => s.name === evt.targetName);
+            if (target) {
+                if (evt.stat === 'quality')       target.quality       = Math.min(10, target.quality + evt.amount);
+                if (evt.stat === 'contentVolume') target.contentVolume = Math.min(10, target.contentVolume + evt.amount);
+                if (evt.stat === 'price')         target.price         = Math.max(1, target.price + evt.amount);
+            }
+        }
+        gameState.pendingEvents.push(evt.message);
+    });
+
+    renderServices();
+    renderGameHUD();
+}
+
+function renderGameHUD() {
+    const hud = document.getElementById('gameHUD');
+    if (!hud || !gameState.active) return;
+    const sc = gameState.scenario;
+    const playerSvc = services.find(s => s.id === gameState.playerServiceId);
+    const subs = playerSvc ? agents.filter(a => a.subscriptions.includes(gameState.playerServiceId)).length : 0;
+    const target  = sc?.winTarget || 200;
+    const pct     = Math.min(100, subs / target * 100).toFixed(0);
+    const credits = Math.floor(gameState.credits);
+    const activeMonths = playerSvc ? currentMonth - gameState.playerEntryMonth : 0;
+    const monthsLeft   = (sc?.activeDuration || 30) - activeMonths;
+    const boosting     = gameState.marketingBoostMonths > 0;
+    const phase        = gameState.phase;
+
+    const competitors = services.filter(s => s.id !== gameState.playerServiceId);
+    const compHtml = competitors.map(s => {
+        const cSubs = agents.filter(a => a.subscriptions.includes(s.id)).length;
+        return `<div class="flex items-center gap-2 text-[11px] text-gray-400 bg-gray-900/50 rounded px-2 py-1 whitespace-nowrap">
+            <div class="w-2 h-2 rounded-full flex-shrink-0" style="background:${s.color}"></div>
+            <span class="font-medium" style="color:${s.color}">${s.name}</span>
+            <span class="text-gray-600 text-[10px]">Q${s.quality.toFixed(1)}</span>
+            <span class="text-gray-600 text-[10px]">V${s.contentVolume.toFixed(1)}</span>
+            <span class="text-gray-600 text-[10px]">$${s.price.toFixed(0)}</span>
+            <span class="text-gray-500 text-[10px]">${s.genreFocus}</span>
+            <span class="text-white font-bold">${cSubs}</span>
+        </div>`;
+    }).join('');
+
+    hud.innerHTML = `
+        <div class="bg-[#0d0a1a] border-b border-purple-900/30 px-6 py-2 flex flex-wrap items-center gap-x-5 gap-y-1">
+            <div class="flex items-center gap-2">
+                <div class="w-2.5 h-2.5 rounded-full bg-purple-500 flex-shrink-0"></div>
+                <span class="font-bold text-purple-300 text-sm">StreamCo</span>
+                ${phase === 'prerun'   ? '<span class="text-xs text-gray-500">Watching market...</span>' : ''}
+                ${phase === 'founding' ? '<span class="text-xs text-yellow-400">Ready to configure</span>' : ''}
+            </div>
+            ${phase === 'playing' || phase === 'complete' ? `
+            <div class="flex items-center gap-2 flex-1 min-w-[160px]">
+                <span class="text-[11px] text-gray-500 whitespace-nowrap">Goal ${target}</span>
+                <div class="flex-1 bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                    <div class="h-1.5 rounded-full transition-all bg-purple-600" style="width:${pct}%"></div>
+                </div>
+                <span class="text-xs font-bold text-white whitespace-nowrap">${subs}/${target}</span>
+            </div>
+            <span class="text-xs text-yellow-300 font-bold whitespace-nowrap">
+                <span class="text-gray-500 font-normal">Credits: </span>${credits}
+                ${boosting ? '<span class="ml-1 text-green-400 text-[10px]">MARKETING ACTIVE</span>' : ''}
+            </span>
+            <span class="text-[11px] text-gray-500 whitespace-nowrap">${monthsLeft > 0 ? monthsLeft + ' mo left' : 'Final!'}</span>
+            ` : ''}
+            <button onclick="setMode('sim')" class="ml-auto text-[10px] text-gray-700 hover:text-gray-400 transition">Exit game</button>
+        </div>
+        ${competitors.length ? `
+        <div class="bg-[#080810] border-b border-purple-900/20 px-6 py-1.5 flex flex-wrap gap-2 items-center">
+            <span class="text-[10px] text-gray-700 uppercase tracking-wide mr-1">Competitors</span>
+            ${compHtml}
+        </div>` : ''}`;
+}
+
+// ── Budget Board ───────────────────────────────────────────────────────────
+function showBudgetBoard(savedEarned) {
+    const sc     = gameState.scenario;
+    const playerSvc = services.find(s => s.id === gameState.playerServiceId);
+    if (!playerSvc) return;
+
+    const subs   = agents.filter(a => a.subscriptions.includes(gameState.playerServiceId)).length;
+    const pct    = Math.min(100, subs / sc.winTarget * 100).toFixed(0);
+    // On first open, capture and reset period earnings; on refresh, reuse saved value
+    const earned = savedEarned !== undefined ? savedEarned : Math.floor(gameState.creditsThisPeriod);
+    if (savedEarned === undefined) {
+        gameState._bbEarned = earned;
+        gameState.creditsThisPeriod = 0;
+        gameState._bbPriceRaises = 0;
+    }
+
+    const activeMonths = currentMonth - gameState.playerEntryMonth;
+    const monthsLeft   = sc.activeDuration - activeMonths;
+    const pendingList = gameState.pendingEvents.slice();
+    gameState.pendingEvents = [];
+
+    const competitors = services.filter(s => s.id !== gameState.playerServiceId);
+
+    const marketEventHtml = pendingList.length ? `
+        <div class="bg-yellow-900/20 border border-yellow-800/50 rounded-lg p-3 mb-4 space-y-1.5">
+            ${pendingList.map(msg => `<div class="flex items-start gap-2"><span class="text-yellow-400 mt-0.5 flex-shrink-0">⚡</span><span class="text-xs text-yellow-300">${msg}</span></div>`).join('')}
+        </div>` : '';
+
+    const competitorRows = competitors.map(c => {
+        const csubs = agents.filter(a => a.subscriptions.includes(c.id)).length;
+        return `<div class="flex items-center gap-2 py-1 text-xs border-b border-gray-800/50 last:border-0">
+            <div class="w-2 h-2 rounded-full flex-shrink-0" style="background:${c.color}"></div>
+            <span class="text-gray-400 w-20 truncate">${c.name}</span>
+            <span class="text-white font-mono w-8">${csubs}</span>
+            <span class="text-gray-600 text-[10px] flex items-center gap-1.5">
+                <abbr title="Content Quality (1–10): higher = lower cancel rate" class="no-underline border-b border-dotted border-gray-600 cursor-help">Q</abbr><span>${c.quality.toFixed(0)}</span>
+                <abbr title="Content Volume (1–10): higher = faster new sign-ups" class="no-underline border-b border-dotted border-gray-600 cursor-help">V</abbr><span>${c.contentVolume.toFixed(0)}</span>
+                <span>$${c.price.toFixed(0)}</span>
+                <span>${c.genreFocus}</span>
+            </span>
+        </div>`;
+    }).join('');
+
+    const upgrades = [
+        { id:'ug-qual-up',   label:'+1 Quality',     sub:`${playerSvc.quality.toFixed(1)} → ${Math.min(10,playerSvc.quality+1).toFixed(1)} · all services −0.18/quarter`,  cost:25,  off: playerSvc.quality >= 9.5 },
+        { id:'ug-vol-up',    label:'+1 Volume',       sub:`${playerSvc.contentVolume.toFixed(1)} → ${Math.min(10,playerSvc.contentVolume+1).toFixed(1)}`, cost:15,  off: playerSvc.contentVolume >= 9.5 },
+        { id:'ug-price-dn',  label:'-$1 Price',       sub:`$${playerSvc.price.toFixed(0)} → $${Math.max(3,playerSvc.price-1).toFixed(0)}`,                cost:10,  off: playerSvc.price <= 3 },
+        { id:'ug-price-up',  label:'+$1 Price',       sub:`$${playerSvc.price.toFixed(0)} → $${Math.min(20,playerSvc.price+1).toFixed(0)}`,               cost:0,   off: playerSvc.price >= 20 },
+        { id:'ug-price-undo',label:'↩ Undo Raise',   sub:`$${playerSvc.price.toFixed(0)} → $${Math.max(3,playerSvc.price-1).toFixed(0)} · reverts last raise`, cost:0,   off: !(gameState._bbPriceRaises > 0) },
+        { id:'ug-marketing', label:'Marketing Burst', sub:`+15% subscribe rate for 3 months`,                                                              cost:20,  off: gameState.marketingBoostMonths > 0 },
+        { id:'ug-genre',     label:'Genre Pivot',     sub:`Change genre (currently: ${playerSvc.genreFocus})`,                                             cost:30,  off: false },
+    ];
+
+    const credits = Math.floor(gameState.credits);
+    const upgradeGrid = upgrades.map(u => `
+        <button id="${u.id}" onclick="applyUpgrade('${u.id}')"
+            data-cost="${u.cost}"
+            class="upgrade-btn flex flex-col items-start px-2.5 py-2 rounded border transition text-left w-full
+                   ${u.off ? 'border-gray-800 opacity-40 cursor-not-allowed' : (u.cost > 0 && u.cost > credits) ? 'border-gray-800 opacity-40 cursor-not-allowed' : 'border-gray-700 hover:border-purple-600'}"
+            ${u.off || (u.cost > 0 && u.cost > credits) ? 'disabled' : ''}>
+            <div class="flex justify-between items-center w-full">
+                <span class="text-xs font-semibold text-white">${u.label}</span>
+                <span class="text-[10px] font-bold ${u.cost === 0 ? 'text-green-400' : 'text-yellow-300'}">${u.cost === 0 ? 'FREE' : u.cost+'¢'}</span>
+            </div>
+            <span class="text-[9px] text-gray-600 mt-0.5 leading-tight">${u.sub}</span>
+        </button>`).join('');
+
+    document.getElementById('bbContent').innerHTML = `
+        ${marketEventHtml}<div class="grid grid-cols-4 gap-4">
+            <!-- Col 1: Progress -->
+            <div class="space-y-2">
+                <div class="text-[10px] text-gray-500 uppercase tracking-wide">Progress</div>
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-gray-400">${subs} / ${sc.winTarget}</span>
+                        <span class="text-gray-600">${pct}%</span>
+                    </div>
+                    <div class="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
+                        <div class="h-2 rounded-full bg-purple-600 transition-all" style="width:${pct}%"></div>
+                    </div>
+                    <div class="text-[10px] mt-1 text-gray-600">${monthsLeft > 0 ? monthsLeft+' months left' : 'FINAL QUARTER'}</div>
+                    <div class="text-[9px] mt-2 text-gray-600 space-y-0.5">
+                        <div>Income growth: <span class="text-gray-400">${(parseFloat(document.getElementById('walletPressure').value)>0?'+':'')}${parseFloat(document.getElementById('walletPressure').value).toFixed(1)}%</span></div>
+                        <div>Inflation: <span class="text-gray-400">${parseFloat(document.getElementById('cpi').value).toFixed(1)}%</span></div>
+                    </div>
+                    ${subs >= sc.goldTarget ? '<div class="text-[10px] text-yellow-300 mt-1 font-bold">Gold pace!</div>' :
+                      subs >= sc.silverTarget ? '<div class="text-[10px] text-gray-300 mt-1">Silver pace</div>' : ''}
+                </div>
+                <div class="bg-black/40 rounded-lg p-2.5 text-xs space-y-1 mt-2">
+                    <div class="text-[9px] text-gray-500 uppercase tracking-wide mb-1">StreamCo</div>
+                    <div class="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px]">
+                        <div><span class="text-gray-500">Q:</span> <span class="text-white font-bold">${playerSvc.quality.toFixed(1)}</span></div>
+                        <div><span class="text-gray-500">V:</span> <span class="text-white font-bold">${playerSvc.contentVolume.toFixed(1)}</span></div>
+                        <div><span class="text-gray-500">$:</span> <span class="text-white font-bold">${playerSvc.price.toFixed(0)}</span></div>
+                        <div><span class="text-gray-500">G:</span> <span class="text-white font-bold">${playerSvc.genreFocus}</span></div>
+                    </div>
+                    ${gameState.marketingBoostMonths > 0 ? `<div class="text-[9px] text-green-400 mt-1">Mktg: ${gameState.marketingBoostMonths}mo left</div>` : ''}
+                </div>
+            </div>
+            <!-- Col 2: Competitors -->
+            <div>
+                <div class="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Competitors</div>
+                ${competitorRows}
+            </div>
+            <!-- Col 3: Credits + earned -->
+            <div class="space-y-2">
+                <div class="text-[10px] text-gray-500 uppercase tracking-wide">Credits</div>
+                <div id="bbCreditsDisplay" class="text-3xl font-bold text-yellow-300">${credits}<span class="text-xs text-gray-500 ml-1">¢</span></div>
+                <div class="text-[10px] text-gray-600">+${earned}¢ this quarter<br>${subs} subs × $${playerSvc.price.toFixed(0)} × rate</div>
+            </div>
+            <!-- Col 4: Upgrades -->
+            <div>
+                <div class="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Upgrades</div>
+                <div class="grid grid-cols-2 gap-1.5">${upgradeGrid}</div>
+                <div id="genrePivotSelector" class="hidden bg-black/40 rounded-lg p-2 mt-2 space-y-1.5">
+                    <div class="text-[10px] text-gray-400">Choose new genre:</div>
+                    <div class="flex flex-wrap gap-1.5">
+                        ${['Action','Drama','Comedy','Kids','Sci-Fi'].map(g => `
+                        <button onclick="applyGenrePivot('${g}')"
+                            class="text-[10px] px-2 py-0.5 rounded border transition ${g === playerSvc.genreFocus ? 'border-gray-700 text-gray-600 cursor-not-allowed' : 'border-gray-700 text-gray-400 hover:border-purple-500 hover:text-purple-300'}"
+                            ${g === playerSvc.genreFocus ? 'disabled' : ''}>${g}</button>`).join('')}
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+    const el = document.getElementById('budgetBoardModal');
+    document.querySelector('main').insertAdjacentElement('afterbegin', el);
+    el.classList.remove('hidden');
+}
+
+function applyUpgrade(upgradeId) {
+    const playerSvc = services.find(s => s.id === gameState.playerServiceId);
+    if (!playerSvc) return;
+
+    if (upgradeId === 'ug-genre') {
+        document.getElementById('genrePivotSelector')?.classList.toggle('hidden');
+        return;
+    }
+
+    const costs = { 'ug-qual-up': 25, 'ug-vol-up': 15, 'ug-price-dn': 10, 'ug-price-up': 0, 'ug-price-undo': 0, 'ug-marketing': 20 };
+    const cost = costs[upgradeId] ?? 0;
+    if (gameState.credits < cost) return;
+    gameState.credits -= cost;
+
+    switch (upgradeId) {
+        case 'ug-qual-up':    playerSvc.quality       = Math.min(10, playerSvc.quality + 1);       break;
+        case 'ug-vol-up':     playerSvc.contentVolume = Math.min(10, playerSvc.contentVolume + 1); break;
+        case 'ug-price-dn':   playerSvc.price         = Math.max(3, playerSvc.price - 1);          break;
+        case 'ug-price-up':   playerSvc.price = Math.min(20, playerSvc.price + 1); gameState._bbPriceRaises++; break;
+        case 'ug-price-undo': if (gameState._bbPriceRaises > 0) { playerSvc.price = Math.max(3, playerSvc.price - 1); gameState._bbPriceRaises--; } break;
+        case 'ug-marketing':
+            gameState.marketingBoostMonths = 3;
+            playerSvc.subscribeMultiplier = 1.15;
+            break;
+    }
+    renderServices();
+    refreshBudgetBoard();
+}
+
+function applyGenrePivot(genre) {
+    const playerSvc = services.find(s => s.id === gameState.playerServiceId);
+    if (!playerSvc || gameState.credits < 30) return;
+    gameState.credits -= 30;
+    playerSvc.genreFocus = genre;
+    renderServices();
+    refreshBudgetBoard();
+}
+
+function refreshBudgetBoard() {
+    showBudgetBoard(gameState._bbEarned);
+}
+
+function closeBudgetBoard() {
+    document.getElementById('budgetBoardModal').classList.add('hidden');
+    const activeMonths = currentMonth - gameState.playerEntryMonth;
+    if (activeMonths >= gameState.scenario.activeDuration) {
+        endGame();
+        return;
+    }
+    isRunning = true;
+    document.getElementById('runBtn').innerText = 'Pause';
+    simInterval = setInterval(step, 200);
+}
+
+// ── End game ───────────────────────────────────────────────────────────────
+function endGame() {
+    gameState.phase = 'complete';
+    if (simInterval) { clearInterval(simInterval); simInterval = null; }
+    isRunning = false;
+    document.getElementById('runBtn').innerText = 'Game Over';
+    renderGameHUD();
+    const subs = agents.filter(a => a.subscriptions.includes(gameState.playerServiceId)).length;
+    showGameOver(subs);
+}
+
+function showGameOver(finalSubs) {
+    const sc = gameState.scenario;
+    const medal = finalSubs >= sc.goldTarget ? 'gold' : finalSubs >= sc.silverTarget ? 'silver' : finalSubs >= sc.bronzeTarget ? 'bronze' : 'none';
+    const isWin = medal !== 'none';
+    const icons  = { gold: '🥇', silver: '🥈', bronze: '🥉', none: '📉' };
+    const labels = { gold: 'Gold — Dominant!', silver: 'Silver — Strong Entry', bronze: 'Bronze — You Made It', none: 'Not This Time' };
+    const colors = { gold: 'text-yellow-300', silver: 'text-gray-200', bronze: 'text-orange-400', none: 'text-red-400' };
+
+    const allSubs = services.map(s => ({
+        name: s.name, color: s.color,
+        count: agents.filter(a => a.subscriptions.includes(s.id)).length
+    })).sort((a, b) => b.count - a.count);
+    const rank = allSubs.findIndex(s => s.name === 'StreamCo') + 1;
+
+    const tipText = !isWin
+        ? `You needed ${sc.bronzeTarget} subscribers. Hint: Kids genre has no competition — try targeting it with Q6+ and price under $10.`
+        : medal === 'bronze' || medal === 'silver'
+            ? `Can you hit Gold next time (${sc.goldTarget}+ subs)? Try a marketing burst in the first half when competitors aren't watching.`
+            : `Perfect run! Try again with a different strategy — can you still win without targeting Kids?`;
+
+    document.getElementById('gameOverContent').innerHTML = `
+        <div class="text-center mb-5">
+            <div class="text-5xl mb-2">${icons[medal]}</div>
+            <div class="text-xl font-bold ${colors[medal]}">${labels[medal]}</div>
+            <div class="text-gray-500 text-xs mt-1">${sc.name}</div>
+        </div>
+        <div class="grid grid-cols-3 gap-3 mb-5 text-center">
+            <div class="bg-black/40 rounded-lg p-3">
+                <div class="text-2xl font-bold text-purple-300">${finalSubs}</div>
+                <div class="text-[10px] text-gray-500 uppercase">Subs</div>
+            </div>
+            <div class="bg-black/40 rounded-lg p-3">
+                <div class="text-2xl font-bold text-white">#${rank}</div>
+                <div class="text-[10px] text-gray-500 uppercase">Rank</div>
+            </div>
+            <div class="bg-black/40 rounded-lg p-3">
+                <div class="text-2xl font-bold text-yellow-300">${Math.floor(gameState.credits)}</div>
+                <div class="text-[10px] text-gray-500 uppercase">Credits left</div>
+            </div>
+        </div>
+        <div class="mb-4">
+            <div class="text-[10px] text-gray-500 uppercase tracking-wide mb-2">Final Rankings</div>
+            ${allSubs.map((s, i) => `
+            <div class="flex items-center gap-2 py-1.5 border-b border-gray-800 last:border-0 text-sm">
+                <span class="text-gray-600 w-5 text-xs">#${i+1}</span>
+                <div class="w-2 h-2 rounded-full flex-shrink-0" style="background:${s.color}"></div>
+                <span class="${s.name==='StreamCo' ? 'text-purple-300 font-bold' : 'text-gray-300'} flex-1">${s.name}</span>
+                <div class="w-24 bg-gray-800 h-1.5 rounded overflow-hidden">
+                    <div class="h-1.5 rounded" style="width:${Math.min(100,(s.count/4)).toFixed(0)}%;background:${s.color}"></div>
+                </div>
+                <span class="text-xs font-mono text-gray-400 w-8 text-right">${s.count}</span>
+            </div>`).join('')}
+        </div>
+        <div class="${isWin ? 'bg-green-900/20 border-green-900/40' : 'bg-red-900/20 border-red-900/40'} border rounded-lg p-3 mb-5 text-xs text-gray-400">
+            <span class="${isWin ? 'text-green-400' : 'text-red-400'} font-bold">${isWin ? 'Tip for next run: ' : 'What to try: '}</span>${tipText}
+        </div>
+        <div class="flex gap-3 flex-wrap">
+            <button onclick="document.getElementById('gameOverModal').classList.add('hidden');startGameScenario('${sc.id}')"
+                class="flex-1 bg-purple-700 hover:bg-purple-600 transition text-white font-bold py-2.5 rounded-lg text-sm">
+                Play Again
+            </button>
+            <button onclick="document.getElementById('gameOverModal').classList.add('hidden')"
+                class="flex-1 border border-gray-600 hover:bg-gray-800 transition text-gray-300 font-bold py-2.5 rounded-lg text-sm"
+                title="Close this panel and explore the full dashboard — charts, dot grid, service profiles">
+                View Dashboard
+            </button>
+        </div>
+        <div class="text-center mt-3">
+            <button onclick="document.getElementById('gameOverModal').classList.add('hidden');setMode('sim')"
+                class="text-xs text-gray-600 hover:text-gray-400 transition">
+                Exit to Simulation mode
+            </button>
+        </div>`;
+
+    document.getElementById('gameOverModal').classList.remove('hidden');
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────
@@ -2668,13 +3692,75 @@ function buildContext() {
     }
   }
 
+  // Game mode context
+  let gameCtx = '';
+  if (gameState.active) {
+    const gsc = gameState.scenario;
+    const pSvc = services.find(s => s.id === gameState.playerServiceId);
+    const pSubs = pSvc ? agents.filter(a => a.subscriptions.includes(gameState.playerServiceId)).length : 0;
+    const activeMonths = pSvc ? currentMonth - gameState.playerEntryMonth : 0;
+    const monthsLeft = (gsc?.activeDuration || 30) - activeMonths;
+    const phase = gameState.phase;
+    const credits = Math.floor(gameState.credits);
+    const bbOpen = !document.getElementById('budgetBoardModal')?.classList.contains('hidden');
+
+    // Upgrade affordability (only relevant when budget board is open or player asks)
+    let upgradeLines = '';
+    if (pSvc) {
+      const upgrades = [
+        { id:'ug-qual-up',   label:'+1 Quality',     cost:25,  feasible: pSvc.quality < 9.5,  note: `q ${pSvc.quality.toFixed(1)}→${Math.min(10,pSvc.quality+1).toFixed(1)} (quality≥7 = very sticky; currently ${pSvc.quality<4?'HIGH churn risk':pSvc.quality<7?'medium churn':'low churn'})` },
+        { id:'ug-vol-up',    label:'+1 Volume',      cost:15,  feasible: pSvc.contentVolume < 9.5, note: `v ${pSvc.contentVolume.toFixed(1)}→${Math.min(10,pSvc.contentVolume+1).toFixed(1)} (boosts sign-up rate)` },
+        { id:'ug-price-dn',  label:'-$1 Price',      cost:10,  feasible: pSvc.price > 3,       note: `$${pSvc.price.toFixed(0)}→$${Math.max(3,pSvc.price-1).toFixed(0)} (lowers revenue/sub but improves deal score)` },
+        { id:'ug-price-up',  label:'+$1 Price',      cost:0,   feasible: pSvc.price < 20,      note: `$${pSvc.price.toFixed(0)}→$${Math.min(20,pSvc.price+1).toFixed(0)} (free; raises revenue but worsens deal score)` },
+        { id:'ug-marketing', label:'Marketing Burst',cost:20,  feasible: gameState.marketingBoostMonths===0, note: `+15% subscribe rate for 3 months` },
+        { id:'ug-genre',     label:'Genre Pivot',    cost:30,  feasible: true,                 note: `change genre from ${pSvc.genreFocus} (genre match = ×1.3 deal score multiplier)` },
+      ];
+      upgradeLines = '\nUpgrades available at Budget Board:\n' + upgrades.map(u => {
+        const canAfford = credits >= u.cost;
+        const status = !u.feasible ? '[maxed]' : !canAfford ? `[need ${u.cost-credits} more¢]` : `[${u.cost===0?'FREE':u.cost+'¢'}]`;
+        return `  ${status} ${u.label}: ${u.note}`;
+      }).join('\n');
+    }
+
+    // Genre opportunity analysis
+    let genreOpportunity = '';
+    if (pSvc && agents.length > 0) {
+      const genreCounts = {};
+      agents.forEach(a => { genreCounts[a.genrePreference] = (genreCounts[a.genrePreference]||0) + 1; });
+      const served = {}; // agents whose preferred genre is served by a competitor
+      services.filter(s => s.id !== gameState.playerServiceId).forEach(s => {
+        agents.forEach(a => { if (a.genrePreference === s.genreFocus) served[a.id] = true; });
+      });
+      const unservedByGenre = {};
+      agents.forEach(a => { if (!served[a.id]) unservedByGenre[a.genrePreference] = (unservedByGenre[a.genrePreference]||0)+1; });
+      const unservedStr = Object.entries(unservedByGenre).sort((a,b)=>b[1]-a[1]).map(([g,n])=>`${g}:${n}`).join(', ');
+      genreOpportunity = unservedStr ? `\nGenre gaps (agents whose preferred genre NO competitor serves): ${unservedStr}` : '';
+      if (pSvc) genreOpportunity += `\nStreamCo genre (${pSvc.genreFocus}): ${genreCounts[pSvc.genreFocus]||0} agents prefer this genre`;
+    }
+
+    // Quality decay trajectory
+    let decayNote = '';
+    if (pSvc) {
+      const periodsLeft = Math.floor(monthsLeft / (gsc?.pauseInterval || 6));
+      const qualWithoutInvestment = Math.max(1, pSvc.quality - 0.03 * Math.min(monthsLeft, gsc?.pauseInterval||6));
+      decayNote = `\nQuality decay: all services lose 0.03/month (−${((gsc?.pauseInterval||6)*0.03).toFixed(2)} per quarter). StreamCo quality without investment next quarter: ~${qualWithoutInvestment.toFixed(1)}. Quarters remaining: ~${periodsLeft}.`;
+    }
+
+    gameCtx = `
+
+GAME MODE — Scenario: ${gsc?.name || '?'} | Phase: ${phase} | Budget board open: ${bbOpen}
+StreamCo: q=${pSvc?.quality.toFixed(1)??'?'} v=${pSvc?.contentVolume.toFixed(1)??'?'} $${pSvc?.price.toFixed(0)??'?'} genre=${pSvc?.genreFocus??'?'} → ${pSubs} subs
+Credits: ${credits}¢ | Marketing boost: ${gameState.marketingBoostMonths>0 ? gameState.marketingBoostMonths+' months left' : 'inactive'}
+Goal: ${gsc?.bronzeTarget} subs=Bronze, ${gsc?.silverTarget}=Silver, ${gsc?.goldTarget}=Gold | Months left: ${monthsLeft>0?monthsLeft:'FINAL'}${upgradeLines}${genreOpportunity}${decayNote}`;
+  }
+
   return `SIM — Month ${currentMonth}/${MONTHS} (${isRunning ? 'running' : 'paused'}) | Scenario: ${scenarioName}
 Economy: incomeGrowth=${ig} inflation=${cpi} → M=${M} (neutral=1.0; <1 boom; >1 recession)
 Agents: ${subscribed}/1000 subscribed | 0-subs:${dist[0]} 1-sub:${dist[1]} 2-subs:${dist[2]} 3-subs:${dist[3]}
 Age (sub/total): ${ageStr}
 Genre weights: ${genreStr}
 Services (index name: price q v genre → subs share Δ6months):
-${svcLines}${scenarioExtra}`;
+${svcLines}${scenarioExtra}${gameCtx}`;
 }
 
 const BASE_SYSTEM = `You are a pedagogical assistant for StreamSim, a high school classroom simulation of a streaming video market.
@@ -2708,9 +3794,9 @@ RESPONSE FORMAT:
 - Plain text for teaching — max 2 sentences. Never recap that you highlighted something, just teach.
 - One tool call per response.
 
-TOOLS — use ONLY the exact JSON shown, nothing else in the response:
+SIMULATION MODE TOOLS (only when GAME MODE is NOT in context):
 {"tool":"highlightElement","args":{"target":"<name>"}}
-  Scrolls to, opens the drawer if needed, and pulses a UI element. Targets: run, restart, randomize, income-growth, inflation, duration, service-count, subscriber-chart, distribution-chart, genre-sliders, scenarios, how-it-works, price:N, quality:N, volume:N, genre-focus:N (N = service index 0–4).
+  Targets: run, restart, randomize, income-growth, inflation, duration, service-count, subscriber-chart, distribution-chart, genre-sliders, scenarios, how-it-works, price:N, quality:N, volume:N, genre-focus:N (N = service index 0–4).
 {"tool":"setServiceParam","args":{"serviceIndex":<0–4>,"param":"<price|quality|volume>","value":<number>}}
 {"tool":"setEconomy","args":{"incomeGrowth":<-5 to 5>,"inflation":<0 to 8>}}
 {"tool":"runForMonths","args":{"months":<1–60>}}
@@ -2718,9 +3804,34 @@ TOOLS — use ONLY the exact JSON shown, nothing else in the response:
   Scenario indices: 0=Price War, 1=Recession, 2=New Entrant, 3=Content Boom.
 {"tool":"resetSim","args":{}}
 
+GAME MODE (when "GAME MODE" appears in your context):
+CRITICAL — you are advising a student who is playing as StreamCo. Different rules apply:
+- NEVER call setServiceParam, setEconomy, runForMonths, resetSim, or loadScenario. The student must make all decisions themselves — that is the point of the game.
+- NEVER highlight simulation parameter sliders (price:N, quality:N, volume:N, income-growth, inflation, etc.) — those controls don't work in game mode.
+- DO use highlightElement with game-mode targets (see below) to point to upgrade buttons when relevant.
+- DO read upgrade affordability and quality decay from context and give concrete, specific advice.
+- DO tell the student what their current situation is in plain numbers — "you have 34¢ and quality is 5.2, which means moderate signup rates and medium cancel risk."
+- DO explain tradeoffs: quality prevents cancellations (sticky), volume drives new signups, price affects revenue AND deal score, marketing gives a temporary boost, genre pivot only helps if there's an unserved audience.
+- DO mention quality decay: all services lose 0.05 quality per month (0.3 per 6-month quarter), so without buying +1 Quality each quarter, quality slowly drifts toward the danger zone (below 4 = 35% cancel rate every month).
+
+GAME MODE highlightElement targets:
+{"tool":"highlightElement","args":{"target":"upgrade-quality"}}   ← the +1 Quality upgrade button
+{"tool":"highlightElement","args":{"target":"upgrade-volume"}}    ← the +1 Volume button
+{"tool":"highlightElement","args":{"target":"upgrade-price-down"}}← the -$1 Price button
+{"tool":"highlightElement","args":{"target":"upgrade-price-up"}} ← the +$1 Price button (free)
+{"tool":"highlightElement","args":{"target":"upgrade-marketing"}} ← the Marketing Burst button
+{"tool":"highlightElement","args":{"target":"upgrade-genre"}}     ← the Genre Pivot button
+{"tool":"highlightElement","args":{"target":"subscriber-chart"}}  ← the chart (always available)
+
+GAME MODE intent rules:
+- "what should I do", "what's the best upgrade", "help me decide" → read the upgrade list from context (costs, affordability, quality decay status, genre gaps) and explain the 1–2 most impactful options given the student's current credits and situation. Then highlight the most relevant upgrade button.
+- "what does X do", "explain X" → explain in plain English using the model mechanics.
+- "show me X", "where is X" → highlightElement with the appropriate game-mode target.
+- "how am I doing" → summarize subscriber count vs. targets, quality trend, and credit rate from context.
+
 Never mix text with a JSON tool call. Never chain two JSON objects.
 
-INTENT RULES — read carefully:
+SIMULATION MODE intent rules:
 - "how does X work", "explain X", "walk me through X", "what is X" → answer DIRECTLY in plain English. Do NOT call highlightElement. Do NOT say "check the modal" or "look at the How It Works section". Just explain it yourself, right here, in student-friendly language.
 - "where is X", "show me X", "how do I find X" → use highlightElement to point to it.
 - "how do I change X" → highlightElement to show the control, then explain what to do with it.
@@ -2763,13 +3874,20 @@ const ELEMENT_MAP = {
   'genre-sliders':      '#genreSliders',
   'scenarios':          'span[onclick*="scenarios"]',
   'how-it-works':       'span[onclick*="insights"]',
+  // Game mode — budget board upgrade buttons
+  'upgrade-quality':    '#ug-qual-up',
+  'upgrade-volume':     '#ug-vol-up',
+  'upgrade-price-down': '#ug-price-dn',
+  'upgrade-price-up':   '#ug-price-up',
+  'upgrade-marketing':  '#ug-marketing',
+  'upgrade-genre':      '#ug-genre',
 };
 
 function highlightEl(el) {
   // If the element is inside a closed drawer, open it first
   const paramsDrawer = document.getElementById('paramsDrawer');
   const checkpointsDrawer = document.getElementById('checkpointsDrawer');
-  if (paramsDrawer && paramsDrawer.contains(el) && paramsDrawer.classList.contains('-translate-x-full')) {
+  if (!gameState.active && paramsDrawer && paramsDrawer.contains(el) && paramsDrawer.classList.contains('-translate-x-full')) {
     toggleDrawer('params');
   } else if (checkpointsDrawer && checkpointsDrawer.contains(el) && checkpointsDrawer.classList.contains('translate-x-full')) {
     toggleDrawer('checkpoints');
@@ -2800,6 +3918,10 @@ function highlightEl(el) {
 // ── Tool execution ────────────────────────────────────────────────────────────
 // Each tool calls existing simulation functions/globals and syncs the slider UI.
 function executeTool(toolName, args) {
+  // Execution tools are disabled in game mode — players must make decisions themselves.
+  if (gameState.active && (toolName === 'setServiceParam' || toolName === 'setEconomy' || toolName === 'runForMonths')) {
+    return `✗ That action is disabled during the game — you need to make this call yourself.`;
+  }
   switch(toolName) {
     case 'setServiceParam': {
       const s = services[args.serviceIndex];
@@ -2961,7 +4083,10 @@ async function sendMessage(userText) {
     const toolCalls = extractToolCalls(fullText);
     if (toolCalls.length === 0) break;  // plain-text response — stop looping
 
-    assistantDiv.textContent = '';  // hide raw JSON
+    // Strip tool-call JSON blocks; preserve any surrounding plain text
+    const textOnly = fullText.replace(/\{(?:[^{}]|\{[^{}]*\})*\}/g, '').trim();
+    if (textOnly) assistantDiv.textContent = textOnly;
+    else assistantDiv.remove();
     const results = toolCalls.map(tc => executeTool(tc.tool, tc.args));
     results.forEach(r => addMessage('tool-result', r));
 
