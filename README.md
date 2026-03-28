@@ -2,6 +2,8 @@
 
 StreamSim is a browser-based classroom simulation for high school economics and statistics. It models a fictional streaming video market using an **agent-based model (ABM)**: 1,000 simulated viewers each independently decide each month whether to subscribe to, keep, or cancel streaming services based on price, content quality, genre preferences, and macroeconomic conditions.
 
+Try it now at: https://nsanders.me/streamsim/
+
 ## What it's for
 
 Students use StreamSim to explore how individual decisions aggregate into market-level outcomes — and how changing a single variable (price, quality, inflation) ripples through the whole system. The tool is designed to make abstract concepts like price sensitivity, marginal utility, and macroeconomic multipliers visible and interactive.
@@ -9,6 +11,8 @@ Students use StreamSim to explore how individual decisions aggregate into market
 ## How to use it
 
 Open `index.html` in any modern browser. No installation or internet connection required after the initial page load (CDN scripts load Chart.js and Tailwind CSS).
+
+You can also try it at https://nsanders.me/streamsim/
 
 ## Key controls
 
