@@ -157,7 +157,7 @@ At the end of `step()`, after all normal UI updates, if `gameState.phase === 'pl
 
 `generateGameEvents(scenario)` is called at the start of each game run and stores the result in `gameState.events`. It generates two types of events, all keyed to months relative to player entry:
 
-**Competitor events**: 1–3 per 6-month quarter (7 quarters for Disruption). Each has `{month, targetName, stat, amount, message}`. Types (quality ±1, contentVolume +1, price ±1) drawn from a weighted pool; no two events hit the same competitor in the same quarter.
+**Competitor events**: 1–2 per 6-month quarter (11 quarters for Disruption). Each has `{month, targetName, stat, amount, message}`. Types (quality ±1, contentVolume +1, price ±1) drawn from a weighted pool; no two events hit the same competitor in the same quarter.
 
 **Economy events**: 1–2 per game, spaced ≥10 months apart, not landing on budget board months. Each has `{month, type:'economy', walletPressure, cpi, message}`. When fired in `onGameStep()`, directly updates the `walletPressure` and `cpi` DOM sliders (which `step()` reads each tick). Templates: recession, boom, inflation surge, stabilization.
 

@@ -2567,7 +2567,7 @@ const GAME_SCENARIOS = [
     {
         id: 'disruption',
         name: 'The Disruption',
-        subtitle: 'Break into a saturated market and reach 175 subscribers in 42 months.',
+        subtitle: 'Break into a saturated market and reach 175 subscribers in 66 months.',
         tag: 'Market Entry',
         locked: false,
         intro: 'Four streaming giants have dominated the market for over a year. You\'re launching StreamCo — a scrappy new entrant. Study the competition, find your niche, and grow to 200 subscribers in 30 months.',
@@ -2578,7 +2578,7 @@ const GAME_SCENARIOS = [
         startingCredits: 30,
         foundingBudget: 8,
         pauseInterval: 6,
-        activeDuration: 42,
+        activeDuration: 66,
         preRunMonths: 12,
         preRunSpeed: 120,
         economy: { walletPressure: 0.5, cpi: 2.5 },
@@ -2695,7 +2695,7 @@ function generateGameEvents(scenario) {
     for (let q = 0; q < numQuarters; q++) {
         const quarterStart = q * scenario.pauseInterval + 1;
         const quarterEnd   = (q + 1) * scenario.pauseInterval - 1; // leave last month clear before budget board
-        const count = 1 + Math.floor(Math.random() * 3); // 1–3 events per quarter
+        const count = 1 + Math.floor(Math.random() * 2); // 1–2 events per quarter
 
         // Avoid hitting the same competitor twice in the same quarter
         const usedNames = new Set();

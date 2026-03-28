@@ -47,7 +47,7 @@ A **Game** toggle in the top-right nav bar switches between Simulation mode and 
 
 1. **Pre-run** — 4 competitor services run for 12 months at 1.2× speed while you observe the market.
 2. **Founding** — configure your service (StreamCo) using an 8-point budget: Quality costs 2 pts/level above 3, Volume costs 1 pt/level above 3, and each $1 below $10 price costs 1 pt. Genre is free. Unspent points become starting credits.
-3. **Active phase** — 42 months of live play. Credits accumulate each month from `subscribers × price × 0.015`. The sim pauses every 6 months for a **Quarterly Strategy Review** where you spend credits on upgrades: +1 Quality (25¢), +1 Volume (15¢), -$1 Price (10¢), +$1 Price (free, reversible within the same review), Marketing Burst +15% subscribe rate for 3 months (20¢), Genre Pivot (30¢).
+3. **Active phase** — 66 months of live play. Credits accumulate each month from `subscribers × price × 0.015`. The sim pauses every 6 months for a **Quarterly Strategy Review** where you spend credits on upgrades: +1 Quality (25¢), +1 Volume (15¢), -$1 Price (10¢), +$1 Price (free, reversible within the same review), Marketing Burst +15% subscribe rate for 3 months (20¢), Genre Pivot (30¢).
 4. **Market events** fire mid-game — 1–3 per quarter, randomized each run (competitor quality investments, library expansions, price cuts, price hikes). No two runs are identical.
 5. **Win target**: 175+ subscribers = Bronze, 225+ = Silver, 275+ = Gold.
 
