@@ -3459,6 +3459,28 @@ initSim();
   border-radius: 4px;
   animation: chatPulse 1s ease 4;
 }
+#chatBackendRow {
+  display: flex; align-items: center; gap: 0.4rem;
+  padding: 0.35rem 0.75rem; background: #0a0a0a; border-bottom: 1px solid #222; flex-shrink: 0;
+}
+.chat-backend-btn {
+  flex: 1; background: #1a1a1a; border: 1px solid #333; border-radius: 5px;
+  color: #666; font-size: 0.72rem; font-weight: 600; padding: 0.25rem 0.5rem;
+  cursor: pointer; letter-spacing: 0.03em;
+}
+.chat-backend-btn.active { background: #252525; border-color: #555; color: #fff; }
+.chat-backend-btn.active.webgpu-btn { border-color: #86efac; color: #86efac; }
+.chat-backend-btn.active.groq-btn { border-color: #fcd34d; color: #fcd34d; }
+#chatStoredKey {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.4rem 1rem; background: #111; border-bottom: 1px solid #222; flex-shrink: 0;
+}
+#chatStoredKeyLabel { font-size: 0.75rem; color: #666; flex: 1; font-family: monospace; }
+#chatClearKeyBtn {
+  background: none; border: 1px solid #333; border-radius: 4px; color: #666;
+  font-size: 0.72rem; padding: 0.2rem 0.5rem; cursor: pointer; white-space: nowrap;
+}
+#chatClearKeyBtn:hover { color: #ccc; border-color: #555; }
 #chatGroqControls {
   display: flex; align-items: center; gap: 0.5rem;
   padding: 0.35rem 0.75rem; background: #111; border-bottom: 1px solid #222; flex-shrink: 0;
@@ -3487,6 +3509,12 @@ initSim();
     <button id="chatCloseBtn" title="Close">✕</button>
   </div>
 
+  <!-- Backend toggle — only visible when WebGPU is available so user can choose -->
+  <div id="chatBackendRow" style="display:none">
+    <button class="chat-backend-btn webgpu-btn active" id="chatWebGPUBtn">WebGPU (local)</button>
+    <button class="chat-backend-btn groq-btn" id="chatGroqBtn">Groq API</button>
+  </div>
+
   <!-- Groq model selector + rate limit — shown when using Groq backend -->
   <div id="chatGroqControls" style="display:none">
     <select id="chatModelSelect" title="Switch Groq model (each has its own rate limit)">
@@ -3498,13 +3526,19 @@ initSim();
     <span id="chatRateLimit"></span>
   </div>
 
-  <!-- Groq API key setup — shown only when WebGPU unavailable and no key yet -->
+  <!-- Groq API key setup — shown when Groq backend is selected and no key is saved -->
   <div id="chatKeySetup" style="display:none">
-    <p>No WebGPU on this device. Enter a free <a href="https://console.groq.com" target="_blank">Groq API key</a> to use a cloud model instead. No credit card required.</p>
+    <p>Enter a free <a href="https://console.groq.com" target="_blank">Groq API key</a> to use a cloud model. No credit card required.</p>
     <div id="chatKeyRow">
       <input id="chatApiKey" type="password" placeholder="gsk_…" spellcheck="false" autocomplete="off">
       <button id="chatKeySaveBtn">Save key</button>
     </div>
+  </div>
+
+  <!-- Stored key indicator — shown when Groq backend active and key already saved -->
+  <div id="chatStoredKey" style="display:none">
+    <span id="chatStoredKeyLabel">Groq key: ••••••••</span>
+    <button id="chatClearKeyBtn">Change key</button>
   </div>
 
   <!-- Model download progress — shown during WebGPU model load -->
@@ -3560,13 +3594,22 @@ window.askChat  = (question) => {
 };
 
 // ── Backend detection ─────────────────────────────────────────────────────────
+let webgpuAvailable = false;
 let backend   = 'none';  // 'webgpu' | 'groq' | 'none'
 let groqKey   = localStorage.getItem('streamsim_groq_key') || '';
 let groqModel = localStorage.getItem('streamsim_groq_model') || 'llama-3.3-70b-versatile';
 let generator = null;    // Transformers.js pipeline, loaded lazily on first message
 let modelLoaded = false;
 
-// Sync selector to persisted model choice and save on change
+// Extra DOM refs for backend toggle
+const backendRow      = document.getElementById('chatBackendRow');
+const webGPUBtn       = document.getElementById('chatWebGPUBtn');
+const groqBtn         = document.getElementById('chatGroqBtn');
+const storedKeyEl     = document.getElementById('chatStoredKey');
+const storedKeyLabel  = document.getElementById('chatStoredKeyLabel');
+const clearKeyBtn     = document.getElementById('chatClearKeyBtn');
+
+// Sync model selector to persisted choice and save on change
 modelSelect.value = groqModel;
 modelSelect.addEventListener('change', () => {
   groqModel = modelSelect.value;
@@ -3575,32 +3618,90 @@ modelSelect.addEventListener('change', () => {
   rateLimitEl.className = '';
 });
 
+function maskKey(key) {
+  return key.slice(0, 7) + '••••••' + key.slice(-4);
+}
+
+function applyBackend(b) {
+  backend = b;
+  localStorage.setItem('streamsim_preferred_backend', b);
+
+  // Update toggle buttons (only shown when WebGPU is available)
+  if (webgpuAvailable) {
+    backendRow.style.display = 'flex';
+    webGPUBtn.classList.toggle('active', b === 'webgpu');
+    groqBtn.classList.toggle('active', b === 'groq');
+  }
+
+  // Update badge
+  if (b === 'webgpu') {
+    badge.textContent = 'WebGPU';
+    badge.className   = 'webgpu';
+  } else {
+    badge.textContent = 'Groq API';
+    badge.className   = 'groq';
+  }
+
+  // Show/hide Groq-specific controls and key UI
+  groqControls.style.display = (b === 'groq') ? 'flex' : 'none';
+
+  if (b === 'groq') {
+    if (!groqKey) {
+      keySetup.style.display = 'block';
+      storedKeyEl.style.display = 'none';
+      sendBtn.disabled = true;
+    } else {
+      keySetup.style.display = 'none';
+      storedKeyEl.style.display = 'flex';
+      storedKeyLabel.textContent = 'Groq key: ' + maskKey(groqKey);
+      sendBtn.disabled = false;
+    }
+  } else {
+    keySetup.style.display = 'none';
+    storedKeyEl.style.display = 'none';
+    sendBtn.disabled = false;
+  }
+}
+
 async function detectBackend() {
   if ('gpu' in navigator) {
     try {
       const adapter = await navigator.gpu.requestAdapter();
-      if (adapter) { backend = 'webgpu'; return; }
+      if (adapter) webgpuAvailable = true;
     } catch(_) {}
   }
-  backend = 'groq';
+  // Respect the user's last explicit choice; fall back to WebGPU if available, else Groq
+  const saved = localStorage.getItem('streamsim_preferred_backend');
+  if (saved === 'groq') {
+    backend = 'groq';
+  } else if (webgpuAvailable) {
+    backend = 'webgpu';
+  } else {
+    backend = 'groq';
+  }
 }
 
 await detectBackend();
+applyBackend(backend);
 
-if (backend === 'webgpu') {
-  badge.textContent = 'WebGPU';
-  badge.className   = 'webgpu';
-} else {
-  badge.textContent = 'Groq API';
-  badge.className   = 'groq';
-  groqControls.style.display = 'flex';
-  if (!groqKey) {
-    keySetup.style.display = 'block';
-  } else {
-    sendBtn.disabled = false;
-    addMessage('system', 'Groq key loaded from previous session.');
-  }
+if (backend === 'groq' && groqKey) {
+  addMessage('system', 'Groq key loaded from previous session.');
 }
+
+// Backend toggle listeners (only reachable when WebGPU is available)
+webGPUBtn.addEventListener('click', () => applyBackend('webgpu'));
+groqBtn.addEventListener('click', () => {
+  applyBackend('groq');
+  if (!groqKey) addMessage('system', 'Enter your Groq API key above to get started.');
+});
+
+// Change/clear saved key
+clearKeyBtn.addEventListener('click', () => {
+  storedKeyEl.style.display = 'none';
+  keySetup.style.display = 'block';
+  document.getElementById('chatApiKey').value = '';
+  sendBtn.disabled = true;
+});
 
 // Groq key save
 document.getElementById('chatKeySaveBtn').addEventListener('click', () => {
@@ -3611,12 +3712,13 @@ document.getElementById('chatKeySaveBtn').addEventListener('click', () => {
   }
   groqKey = v;
   localStorage.setItem('streamsim_groq_key', groqKey);
+  document.getElementById('chatApiKey').value = '';  // clear from DOM
   keySetup.style.display = 'none';
+  storedKeyEl.style.display = 'flex';
+  storedKeyLabel.textContent = 'Groq key: ' + maskKey(groqKey);
   sendBtn.disabled = false;
   addMessage('system', 'Key saved. Ask me anything about the simulation.');
 });
-
-if (backend === 'webgpu') sendBtn.disabled = false;
 
 // ── Message helpers ───────────────────────────────────────────────────────────
 function addMessage(role, text) {
