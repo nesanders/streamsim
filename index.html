@@ -3517,6 +3517,9 @@ initSim();
     <button class="chat-backend-btn groq-btn" id="chatGroqBtn">Groq API</button>
   </div>
 
+  <!-- One-line description of active backend + model, updated by applyBackend() -->
+  <div id="chatBackendDesc" style="display:none; font-size:0.72rem; color:#666; padding:0.1rem 1rem 0.4rem; font-style:italic;"></div>
+
   <!-- Groq model selector + rate limit — shown when using Groq backend -->
   <div id="chatGroqControls" style="display:none">
     <select id="chatModelSelect" title="Switch Groq model (each has its own rate limit)">
@@ -3564,8 +3567,9 @@ initSim();
 // variables (services, agents, currentMonth, etc.) are on the window object
 // and accessible here as plain globals.
 
-import { pipeline, TextStreamer } from
+import { pipeline, TextStreamer, env } from
   'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.2';
+env.useBrowserCache = true;  // persist model files in browser Cache API across sessions
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const panel     = document.getElementById('chatPanel');
@@ -3605,6 +3609,7 @@ let modelLoaded = false;
 
 // Extra DOM refs for backend toggle
 const backendRow      = document.getElementById('chatBackendRow');
+const backendDesc     = document.getElementById('chatBackendDesc');
 const webGPUBtn       = document.getElementById('chatWebGPUBtn');
 const groqBtn         = document.getElementById('chatGroqBtn');
 const storedKeyEl     = document.getElementById('chatStoredKey');
@@ -3618,6 +3623,10 @@ modelSelect.addEventListener('change', () => {
   localStorage.setItem('streamsim_groq_model', groqModel);
   rateLimitEl.textContent = '';  // clear stale limit from previous model
   rateLimitEl.className = '';
+  if (backend === 'groq') {
+    const label = modelSelect.options[modelSelect.selectedIndex].text;
+    backendDesc.textContent = `${label} · cloud AI via Groq · fast, requires API key`;
+  }
 });
 
 function maskKey(key) {
@@ -3635,14 +3644,18 @@ function applyBackend(b) {
     groqBtn.classList.toggle('active', b === 'groq');
   }
 
-  // Update badge
+  // Update badge and one-line description
   if (b === 'webgpu') {
     badge.textContent = 'WebGPU';
     badge.className   = 'webgpu';
+    backendDesc.textContent = 'Qwen3-0.6B · runs entirely in your browser · no data sent anywhere';
   } else {
     badge.textContent = 'Groq API';
     badge.className   = 'groq';
+    const label = modelSelect.options[modelSelect.selectedIndex]?.text || groqModel;
+    backendDesc.textContent = `${label} · cloud AI via Groq · fast, requires API key`;
   }
+  backendDesc.style.display = 'block';
 
   // Show/hide Groq-specific controls and key UI
   groqControls.style.display = (b === 'groq') ? 'flex' : 'none';
@@ -4169,19 +4182,19 @@ async function sendMessage(userText) {
         let raw = '';
         fullText = await runWebGPU([systemMsg, ...conversation], chunk => {
           raw += chunk;
-          const closeIdx = raw.search(/<\/thinking>/i);
+          const closeIdx = raw.search(/<\/think>/i);
           if (closeIdx !== -1) {
             // Thinking done — switch to streaming the real answer
-            assistantDiv.textContent = raw.slice(closeIdx + '</thinking>'.length).trimStart();
-          } else if (!/<thinking>/i.test(raw)) {
+            assistantDiv.textContent = raw.slice(closeIdx + '</think>'.length).trimStart();
+          } else if (!/<think>/i.test(raw)) {
             // No thinking block — stream normally (indicator already replaced)
             assistantDiv.textContent = raw;
           }
-          // else: still inside <thinking> — keep showing the indicator
+          // else: still inside <think> — keep showing the indicator
           messages.scrollTop = messages.scrollHeight;
         });
-        // Final clean-up (handles truncated output where </thinking> never arrived)
-        fullText = fullText.replace(/<thinking>[\s\S]*?<\/thinking>\s*/i, '').trim();
+        // Final clean-up (handles truncated output where </think> never arrived)
+        fullText = fullText.replace(/<think>[\s\S]*?<\/think>\s*/i, '').trim();
         assistantDiv.textContent = fullText;
       } else {
         fullText = await runGroq([systemMsg, ...conversation], chunk => {
@@ -4242,7 +4255,15 @@ function updateModelProgress() {
 async function ensureWebGPULoaded() {
   if (modelLoaded) return;
   progress.style.display = 'block';
-  progressLabel.textContent = 'Downloading Qwen3-0.6B… (first time only)';
+  // Check if model files are already in the browser Cache API
+  let cached = false;
+  if ('caches' in window) {
+    try {
+      const c = await caches.open('transformers-cache');
+      cached = (await c.keys()).some(r => r.url.includes('Qwen3-0.6B'));
+    } catch(_) {}
+  }
+  progressLabel.textContent = cached ? 'Loading Qwen3-0.6B from cache…' : 'Downloading Qwen3-0.6B… (first time only, ~150 MB)';
   generator = await pipeline('text-generation', 'onnx-community/Qwen3-0.6B-ONNX', {
     device: 'webgpu',
     dtype: 'q4f16',
