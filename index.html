@@ -4178,6 +4178,12 @@ async function sendMessage(userText) {
       break;
     }
 
+    // Qwen3 (WebGPU) emits <thinking>…</thinking> before its answer; strip it.
+    if (backend === 'webgpu') {
+      fullText = fullText.replace(/<thinking>[\s\S]*?<\/thinking>\s*/i, '').trim();
+      assistantDiv.textContent = fullText;
+    }
+
     conversation.push({ role: 'assistant', content: fullText });
 
     // Check for tool calls. If found, execute them, record results in conversation,
