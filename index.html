@@ -3431,6 +3431,8 @@ initSim();
 .chat-msg.assistant { background: #141414; border: 1px solid #2a2a2a; color: #d1d5db; align-self: flex-start; }
 .chat-msg.system   { background: transparent; border: none; color: #555; font-size: 0.72rem; align-self: center; font-style: italic; }
 .chat-msg.tool-result { background: #0a1a0a; border: 1px solid #1a4a1a; color: #86efac; font-size: 0.75rem; font-family: monospace; align-self: flex-start; }
+.thinking-indicator { color: #555; font-style: italic; font-size: 0.85rem; animation: thinking-pulse 1.4s ease-in-out infinite; }
+@keyframes thinking-pulse { 0%,100%{opacity:.3} 50%{opacity:.9} }
 
 #chatInputRow {
   display: flex; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid #222; flex-shrink: 0;
@@ -4161,11 +4163,26 @@ async function sendMessage(userText) {
 
     try {
       if (backend === 'webgpu') {
+        // Show a pulsing indicator immediately — model startup + thinking phase
+        // both produce no visible output, so the user needs to know it's working.
+        assistantDiv.innerHTML = '<span class="thinking-indicator">Thinking\u2026</span>';
+        let raw = '';
         fullText = await runWebGPU([systemMsg, ...conversation], chunk => {
-          fullText += chunk;
-          assistantDiv.textContent = fullText;
+          raw += chunk;
+          const closeIdx = raw.search(/<\/thinking>/i);
+          if (closeIdx !== -1) {
+            // Thinking done — switch to streaming the real answer
+            assistantDiv.textContent = raw.slice(closeIdx + '</thinking>'.length).trimStart();
+          } else if (!/<thinking>/i.test(raw)) {
+            // No thinking block — stream normally (indicator already replaced)
+            assistantDiv.textContent = raw;
+          }
+          // else: still inside <thinking> — keep showing the indicator
           messages.scrollTop = messages.scrollHeight;
         });
+        // Final clean-up (handles truncated output where </thinking> never arrived)
+        fullText = fullText.replace(/<thinking>[\s\S]*?<\/thinking>\s*/i, '').trim();
+        assistantDiv.textContent = fullText;
       } else {
         fullText = await runGroq([systemMsg, ...conversation], chunk => {
           fullText += chunk;
