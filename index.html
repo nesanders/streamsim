@@ -3381,8 +3381,9 @@ initSim();
   font-size: 0.65rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
   padding: 0.15rem 0.45rem; border-radius: 4px;
 }
-#chatBackendBadge.webgpu { background: #0f2a1a; color: #86efac; }
-#chatBackendBadge.groq   { background: #1a1100; color: #fcd34d; }
+#chatBackendBadge.webgpu  { background: #0f2a1a; color: #86efac; }
+#chatBackendBadge.groq    { background: #1a1100; color: #fcd34d; }
+#chatBackendBadge.gemini  { background: #0a1520; color: #60a5fa; }
 #chatBackendBadge.none   { background: #1a1a1a; color: #666; }
 #chatCloseBtn {
   background: none; border: none; color: #666; cursor: pointer; padding: 2px;
@@ -3472,7 +3473,8 @@ initSim();
 }
 .chat-backend-btn.active { background: #252525; border-color: #555; color: #fff; }
 .chat-backend-btn.active.webgpu-btn { border-color: #86efac; color: #86efac; }
-.chat-backend-btn.active.groq-btn { border-color: #fcd34d; color: #fcd34d; }
+.chat-backend-btn.active.groq-btn   { border-color: #fcd34d; color: #fcd34d; }
+.chat-backend-btn.active.gemini-btn { border-color: #60a5fa; color: #60a5fa; }
 #chatStoredKey {
   display: flex; align-items: center; gap: 0.5rem;
   padding: 0.4rem 1rem; background: #111; border-bottom: 1px solid #222; flex-shrink: 0;
@@ -3511,10 +3513,11 @@ initSim();
     <button id="chatCloseBtn" title="Close">✕</button>
   </div>
 
-  <!-- Backend toggle — only visible when WebGPU is available so user can choose -->
+  <!-- Backend toggle — always visible; WebGPU button greyed out if unavailable -->
   <div id="chatBackendRow" style="display:none">
-    <button class="chat-backend-btn webgpu-btn active" id="chatWebGPUBtn">WebGPU (local)</button>
+    <button class="chat-backend-btn webgpu-btn" id="chatWebGPUBtn">WebGPU (local)</button>
     <button class="chat-backend-btn groq-btn" id="chatGroqBtn">Groq API</button>
+    <button class="chat-backend-btn gemini-btn" id="chatGeminiBtn">Gemini API</button>
   </div>
 
   <!-- One-line description of active backend + model, updated by applyBackend() -->
@@ -3544,6 +3547,30 @@ initSim();
   <div id="chatStoredKey" style="display:none">
     <span id="chatStoredKeyLabel">Groq key: ••••••••</span>
     <button id="chatClearKeyBtn">Change key</button>
+  </div>
+
+  <!-- Gemini model selector — shown when using Gemini backend -->
+  <div id="chatGeminiControls" style="display:none; gap:0.5rem; align-items:center; padding:0.4rem 1rem;">
+    <select id="chatGeminiModelSelect" title="Switch Gemini model">
+      <option value="gemini-2.0-flash">Gemini 2.0 Flash (best)</option>
+      <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+      <option value="gemini-1.5-flash-8b">Gemini 1.5 Flash-8B (fastest)</option>
+    </select>
+  </div>
+
+  <!-- Gemini API key setup — shown when Gemini backend is selected and no key is saved -->
+  <div id="chatGeminiKeySetup" style="display:none">
+    <p>Enter a free <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio key</a>. No credit card required.</p>
+    <div style="display:flex; gap:0.5rem; padding:0.3rem 0;">
+      <input id="chatGeminiApiKey" type="password" placeholder="AIza…" spellcheck="false" autocomplete="off">
+      <button id="chatGeminiKeySaveBtn">Save key</button>
+    </div>
+  </div>
+
+  <!-- Stored key indicator — shown when Gemini backend active and key already saved -->
+  <div id="chatGeminiStoredKey" style="display:none">
+    <span id="chatGeminiStoredKeyLabel">Gemini key: ••••••••</span>
+    <button id="chatGeminiClearKeyBtn">Change key</button>
   </div>
 
   <!-- Model download progress — shown during WebGPU model load -->
@@ -3601,22 +3628,30 @@ window.askChat  = (question) => {
 
 // ── Backend detection ─────────────────────────────────────────────────────────
 let webgpuAvailable = false;
-let backend   = 'none';  // 'webgpu' | 'groq' | 'none'
-let groqKey   = localStorage.getItem('streamsim_groq_key') || '';
-let groqModel = localStorage.getItem('streamsim_groq_model') || 'llama-3.3-70b-versatile';
+let backend     = 'none';  // 'webgpu' | 'groq' | 'gemini' | 'none'
+let groqKey     = localStorage.getItem('streamsim_groq_key')    || '';
+let groqModel   = localStorage.getItem('streamsim_groq_model')   || 'llama-3.3-70b-versatile';
+let geminiKey   = localStorage.getItem('streamsim_gemini_key')  || '';
+let geminiModel = localStorage.getItem('streamsim_gemini_model') || 'gemini-2.0-flash';
 let generator = null;    // Transformers.js pipeline, loaded lazily on first message
 let modelLoaded = false;
 
 // Extra DOM refs for backend toggle
-const backendRow      = document.getElementById('chatBackendRow');
-const backendDesc     = document.getElementById('chatBackendDesc');
-const webGPUBtn       = document.getElementById('chatWebGPUBtn');
-const groqBtn         = document.getElementById('chatGroqBtn');
-const storedKeyEl     = document.getElementById('chatStoredKey');
-const storedKeyLabel  = document.getElementById('chatStoredKeyLabel');
-const clearKeyBtn     = document.getElementById('chatClearKeyBtn');
+const backendRow          = document.getElementById('chatBackendRow');
+const backendDesc         = document.getElementById('chatBackendDesc');
+const webGPUBtn           = document.getElementById('chatWebGPUBtn');
+const groqBtn             = document.getElementById('chatGroqBtn');
+const geminiBtn           = document.getElementById('chatGeminiBtn');
+const storedKeyEl         = document.getElementById('chatStoredKey');
+const storedKeyLabel      = document.getElementById('chatStoredKeyLabel');
+const clearKeyBtn         = document.getElementById('chatClearKeyBtn');
+const geminiControls      = document.getElementById('chatGeminiControls');
+const geminiKeySetup      = document.getElementById('chatGeminiKeySetup');
+const geminiStoredKeyEl   = document.getElementById('chatGeminiStoredKey');
+const geminiStoredKeyLabel = document.getElementById('chatGeminiStoredKeyLabel');
+const geminiModelSelect   = document.getElementById('chatGeminiModelSelect');
 
-// Sync model selector to persisted choice and save on change
+// Sync model selectors to persisted choices and save on change
 modelSelect.value = groqModel;
 modelSelect.addEventListener('change', () => {
   groqModel = modelSelect.value;
@@ -3629,6 +3664,16 @@ modelSelect.addEventListener('change', () => {
   }
 });
 
+geminiModelSelect.value = geminiModel;
+geminiModelSelect.addEventListener('change', () => {
+  geminiModel = geminiModelSelect.value;
+  localStorage.setItem('streamsim_gemini_model', geminiModel);
+  if (backend === 'gemini') {
+    const label = geminiModelSelect.options[geminiModelSelect.selectedIndex].text;
+    backendDesc.textContent = `${label} · cloud AI via Google · free key at aistudio.google.com`;
+  }
+});
+
 function maskKey(key) {
   return key.slice(0, 7) + '••••••' + key.slice(-4);
 }
@@ -3637,44 +3682,46 @@ function applyBackend(b) {
   backend = b;
   localStorage.setItem('streamsim_preferred_backend', b);
 
-  // Update toggle buttons (only shown when WebGPU is available)
-  if (webgpuAvailable) {
-    backendRow.style.display = 'flex';
-    webGPUBtn.classList.toggle('active', b === 'webgpu');
-    groqBtn.classList.toggle('active', b === 'groq');
-  }
+  // Always show the toggle row; dim WebGPU button when unavailable
+  backendRow.style.display = 'flex';
+  webGPUBtn.classList.toggle('active', b === 'webgpu');
+  groqBtn.classList.toggle('active',   b === 'groq');
+  geminiBtn.classList.toggle('active', b === 'gemini');
+  webGPUBtn.style.opacity = webgpuAvailable ? '1' : '0.35';
+  webGPUBtn.disabled = !webgpuAvailable;
 
-  // Update badge and one-line description
+  // Badge + one-line description
   if (b === 'webgpu') {
-    badge.textContent = 'WebGPU';
-    badge.className   = 'webgpu';
+    badge.textContent = 'WebGPU'; badge.className = 'webgpu';
     backendDesc.textContent = 'Qwen3-0.6B · runs entirely in your browser · no data sent anywhere';
-  } else {
-    badge.textContent = 'Groq API';
-    badge.className   = 'groq';
+  } else if (b === 'groq') {
+    badge.textContent = 'Groq API'; badge.className = 'groq';
     const label = modelSelect.options[modelSelect.selectedIndex]?.text || groqModel;
     backendDesc.textContent = `${label} · cloud AI via Groq · fast, requires API key`;
+  } else {
+    badge.textContent = 'Gemini'; badge.className = 'gemini';
+    const label = geminiModelSelect.options[geminiModelSelect.selectedIndex]?.text || geminiModel;
+    backendDesc.textContent = `${label} · cloud AI via Google · free key at aistudio.google.com`;
   }
   backendDesc.style.display = 'block';
 
-  // Show/hide Groq-specific controls and key UI
-  groqControls.style.display = (b === 'groq') ? 'flex' : 'none';
+  // Show/hide backend-specific controls
+  groqControls.style.display   = (b === 'groq')   ? 'flex' : 'none';
+  geminiControls.style.display = (b === 'gemini') ? 'flex' : 'none';
+
+  // Hide all key UIs first, then show the relevant ones
+  keySetup.style.display          = 'none';
+  storedKeyEl.style.display       = 'none';
+  geminiKeySetup.style.display    = 'none';
+  geminiStoredKeyEl.style.display = 'none';
+  sendBtn.disabled = false;
 
   if (b === 'groq') {
-    if (!groqKey) {
-      keySetup.style.display = 'block';
-      storedKeyEl.style.display = 'none';
-      sendBtn.disabled = true;
-    } else {
-      keySetup.style.display = 'none';
-      storedKeyEl.style.display = 'flex';
-      storedKeyLabel.textContent = 'Groq key: ' + maskKey(groqKey);
-      sendBtn.disabled = false;
-    }
-  } else {
-    keySetup.style.display = 'none';
-    storedKeyEl.style.display = 'none';
-    sendBtn.disabled = false;
+    if (!groqKey) { keySetup.style.display = 'block'; sendBtn.disabled = true; }
+    else { storedKeyEl.style.display = 'flex'; storedKeyLabel.textContent = 'Groq key: ' + maskKey(groqKey); }
+  } else if (b === 'gemini') {
+    if (!geminiKey) { geminiKeySetup.style.display = 'block'; sendBtn.disabled = true; }
+    else { geminiStoredKeyEl.style.display = 'flex'; geminiStoredKeyLabel.textContent = 'Gemini key: ' + maskKey(geminiKey); }
   }
 }
 
@@ -3687,8 +3734,8 @@ async function detectBackend() {
   }
   // Respect the user's last explicit choice; fall back to WebGPU if available, else Groq
   const saved = localStorage.getItem('streamsim_preferred_backend');
-  if (saved === 'groq') {
-    backend = 'groq';
+  if (saved === 'groq' || saved === 'gemini') {
+    backend = saved;
   } else if (webgpuAvailable) {
     backend = 'webgpu';
   } else {
@@ -3699,15 +3746,18 @@ async function detectBackend() {
 await detectBackend();
 applyBackend(backend);
 
-if (backend === 'groq' && groqKey) {
-  addMessage('system', 'Groq key loaded from previous session.');
-}
+if (backend === 'groq'   && groqKey)   addMessage('system', 'Groq key loaded from previous session.');
+if (backend === 'gemini' && geminiKey) addMessage('system', 'Gemini key loaded from previous session.');
 
-// Backend toggle listeners (only reachable when WebGPU is available)
+// Backend toggle listeners
 webGPUBtn.addEventListener('click', () => applyBackend('webgpu'));
 groqBtn.addEventListener('click', () => {
   applyBackend('groq');
   if (!groqKey) addMessage('system', 'Enter your Groq API key above to get started.');
+});
+geminiBtn.addEventListener('click', () => {
+  applyBackend('gemini');
+  if (!geminiKey) addMessage('system', 'Enter your Google AI Studio key above to get started.');
 });
 
 // Change/clear saved key
@@ -3727,10 +3777,33 @@ document.getElementById('chatKeySaveBtn').addEventListener('click', () => {
   }
   groqKey = v;
   localStorage.setItem('streamsim_groq_key', groqKey);
-  document.getElementById('chatApiKey').value = '';  // clear from DOM
+  document.getElementById('chatApiKey').value = '';
   keySetup.style.display = 'none';
   storedKeyEl.style.display = 'flex';
   storedKeyLabel.textContent = 'Groq key: ' + maskKey(groqKey);
+  sendBtn.disabled = false;
+  addMessage('system', 'Key saved. Ask me anything about the simulation.');
+});
+
+// Gemini key clear + save
+document.getElementById('chatGeminiClearKeyBtn').addEventListener('click', () => {
+  geminiStoredKeyEl.style.display = 'none';
+  geminiKeySetup.style.display = 'block';
+  document.getElementById('chatGeminiApiKey').value = '';
+  sendBtn.disabled = true;
+});
+document.getElementById('chatGeminiKeySaveBtn').addEventListener('click', () => {
+  const v = document.getElementById('chatGeminiApiKey').value.trim();
+  if (!v.startsWith('AIza')) {
+    addMessage('system', 'Key should start with AIza — check and try again.');
+    return;
+  }
+  geminiKey = v;
+  localStorage.setItem('streamsim_gemini_key', geminiKey);
+  document.getElementById('chatGeminiApiKey').value = '';
+  geminiKeySetup.style.display = 'none';
+  geminiStoredKeyEl.style.display = 'flex';
+  geminiStoredKeyLabel.textContent = 'Gemini key: ' + maskKey(geminiKey);
   sendBtn.disabled = false;
   addMessage('system', 'Key saved. Ask me anything about the simulation.');
 });
@@ -4196,8 +4269,14 @@ async function sendMessage(userText) {
         // Final clean-up (handles truncated output where </think> never arrived)
         fullText = fullText.replace(/<think>[\s\S]*?<\/think>\s*/i, '').trim();
         assistantDiv.textContent = fullText;
-      } else {
+      } else if (backend === 'groq') {
         fullText = await runGroq([systemMsg, ...conversation], chunk => {
+          fullText += chunk;
+          assistantDiv.textContent = fullText;
+          messages.scrollTop = messages.scrollHeight;
+        });
+      } else {
+        fullText = await runGemini([systemMsg, ...conversation], chunk => {
           fullText += chunk;
           assistantDiv.textContent = fullText;
           messages.scrollTop = messages.scrollHeight;
@@ -4305,7 +4384,7 @@ async function runGroq(msgs, onChunk) {
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: msgs, stream: true, max_tokens: 512 })
+    body: JSON.stringify({ model: groqModel, messages: msgs, stream: true, max_tokens: 512 })
   });
   if (!res.ok) throw new Error(`Groq ${res.status}: ${await res.text()}`);
 
@@ -4324,6 +4403,49 @@ async function runGroq(msgs, onChunk) {
       if (payload === '[DONE]') continue;
       try {
         const chunk = JSON.parse(payload).choices[0]?.delta?.content;
+        if (chunk) { result += chunk; onChunk(chunk); }
+      } catch(_) {}
+    }
+  }
+  return result;
+}
+
+// ── Gemini backend ────────────────────────────────────────────────────────────
+async function runGemini(msgs, onChunk) {
+  const systemMsg = msgs.find(m => m.role === 'system');
+  const chatMsgs  = msgs.filter(m => m.role !== 'system');
+  const body = {
+    contents: chatMsgs.map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    })),
+    generationConfig: { maxOutputTokens: 512 }
+  };
+  if (systemMsg) body.systemInstruction = { parts: [{ text: systemMsg.content }] };
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:streamGenerateContent?alt=sse&key=${geminiKey}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '', result = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const payload = line.slice(6).trim();
+      if (!payload || payload === '[DONE]') continue;
+      try {
+        const chunk = JSON.parse(payload).candidates?.[0]?.content?.parts?.[0]?.text || '';
         if (chunk) { result += chunk; onChunk(chunk); }
       } catch(_) {}
     }
